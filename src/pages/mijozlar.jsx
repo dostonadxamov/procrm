@@ -1,5 +1,11 @@
 import { useState, useEffect, useRef } from "react";
-import { Plus, FolderOpen, AlertCircle, Loader2 } from "lucide-react";
+import {
+  Plus,
+  FolderOpen,
+  AlertCircle,
+  Loader2,
+  MessageCircle,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Skeleton } from "../components/ui/skeleton";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
@@ -39,6 +45,7 @@ async function apiFetch(url, options = {}) {
     window.location.href = "/login";
     return null;
   }
+
   return res;
 }
 
@@ -94,6 +101,8 @@ export default function Pipeline() {
   const [leads, setLeads] = useState([]);
   const [leadSource, setLeadSource] = useState([]);
   const [currentProject, setCurrentProject] = useState(null); // { id, name }
+
+  console.log(leads);
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -631,11 +640,21 @@ export default function Pipeline() {
                                 <div className="mt-1 text-xs opacity-60">
                                   {lead.phone}
                                 </div>
-                                {lead.budjet > 0 && (
-                                  <div className="mt-1 text-xs text-green-400">
-                                    {lead.budjet.toLocaleString()} so'm
-                                  </div>
-                                )}
+
+                                <div className="mt-2 flex items-center justify-between gap-2">
+                                  {lead.budjet > 0 && (
+                                    <div className="mt-1 text-xs text-green-400">
+                                      {lead.budjet.toLocaleString()} so'm
+                                    </div>
+                                  )}
+
+                                  {lead.taskRemainingDays != null && (
+                                    <div className="mt-1 flex items-center gap-1 text-xs">
+                                      {lead.taskRemainingDays}{" "}
+                                      <MessageCircle className="h-3 w-3" />{" "}
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             )}
                           </Draggable>

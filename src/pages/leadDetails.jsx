@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   Phone,
   MapPin,
@@ -6,14 +6,18 @@ import {
   MessageSquare,
   ChevronLeft,
   MoreVertical,
-  Search,
   HandCoins,
   SendHorizonal,
   Calendar,
+  MessageCircle,
+  CheckSquare,
+  ArrowRightLeft,
+  Clock,
 } from "lucide-react";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -25,136 +29,398 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 
-const leadDetails = () => {
+const API = import.meta.env.VITE_VITE_API_KEY_PROHOME;
+
+// ─────────────────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────────────────
+const formatCurrency = (amount) =>
+  new Intl.NumberFormat("uz-UZ").format(amount) + " so'm";
+
+const formatDate = (dateString) => {
+  if (!dateString) return "—";
+  return new Date(dateString).toLocaleDateString("uz-UZ", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+};
+
+const formatDateTime = (dateString) => {
+  if (!dateString) return "—";
+  return new Date(dateString).toLocaleString("uz-UZ", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const formatMonthYear = (dateString) => {
+  if (!dateString) return "";
+  return new Date(dateString).toLocaleDateString("uz-UZ", {
+    month: "long",
+    year: "numeric",
+  });
+};
+
+// 18 yoshdan katta: max tug'ilgan sana
+const maxBirthDate = (() => {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() - 18);
+  return d.toISOString().slice(0, 10);
+})();
+
+// ─────────────────────────────────────────────────────────────────────────
+// EVENT TYPE CONFIG
+// ─────────────────────────────────────────────────────────────────────────
+const EVENT_CFG = {
+  Description: { icon: MessageCircle, color: "#3b82f6", label: "Izoh" },
+  tasks: { icon: CheckSquare, color: "#10b981", label: "Task" },
+  message: { icon: MessageSquare, color: "#3b82f6", label: "Xabar" },
+  status_change: {
+    icon: ArrowRightLeft,
+    color: "#8b5cf6",
+    label: "Status o'zgardi",
+  },
+  default: { icon: Tag, color: "#6b7280", label: "Hodisa" },
+};
+const getCfg = (type) => EVENT_CFG[type] || EVENT_CFG.default;
+
+// ─────────────────────────────────────────────────────────────────────────
+// INPUT TYPES
+// ─────────────────────────────────────────────────────────────────────────
+const INPUT_TYPES = [
+  {
+    value: "Description",
+    label: "Izoh",
+    icon: MessageCircle,
+    color: "#3b82f6",
+    placeholder: "Izoh yozing...",
+  },
+  {
+    value: "tasks",
+    label: "Task",
+    icon: CheckSquare,
+    color: "#10b981",
+    placeholder: "Vazifani kiriting...",
+  },
+];
+
+// ─────────────────────────────────────────────────────────────────────────
+// EVENT CARD
+// ─────────────────────────────────────────────────────────────────────────
+function EventCard({ event }) {
+  const cfg = getCfg(event.type);
+  const Icon = cfg.icon;
+
+  return (
+    <div className="group flex gap-3">
+      {/* Icon + connector */}
+      <div className="flex flex-col items-center">
+        <div
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl"
+          style={{
+            background: `${cfg.color}15`,
+            border: `1px solid ${cfg.color}28`,
+          }}
+        >
+          <Icon size={14} style={{ color: cfg.color }} />
+        </div>
+        <div
+          className="w-px flex-1 bg-white/[0.04]"
+          style={{ minHeight: 12 }}
+        />
+      </div>
+
+      {/* Content */}
+      <div
+        className="mb-3 flex-1 overflow-hidden rounded-xl border border-white/[0.05] bg-white/[0.025] p-4 transition-colors group-hover:bg-white/[0.04]"
+        style={{ borderLeft: `2px solid ${cfg.color}35` }}
+      >
+        {/* Header */}
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span
+              className="rounded-md px-2 py-0.5 text-[10px] font-bold tracking-wider uppercase"
+              style={{ color: cfg.color, background: `${cfg.color}15` }}
+            >
+              {cfg.label}
+            </span>
+            {event.user?.role && (
+              <span className="text-xs text-gray-600">{event.user.role}</span>
+            )}
+          </div>
+          <div className="flex items-center gap-1 text-[11px] text-gray-600">
+            <Clock size={10} />
+            {formatDateTime(event.createdAt)}
+          </div>
+        </div>
+
+        {/* Text */}
+        <p className="text-sm leading-relaxed text-gray-300">
+          {event.text || event.description}
+        </p>
+
+        {/* Task badge */}
+        {event.type === "tasks" && (
+          <div className="mt-3">
+            <span
+              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium"
+              style={{ background: "rgba(16,185,129,0.1)", color: "#10b981" }}
+            >
+              <CheckSquare size={11} /> Vazifa yaratildi
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// INPUT BAR
+// ─────────────────────────────────────────────────────────────────────────
+function InputBar({ onSubmit, sending }) {
+  const [text, setText] = useState("");
+  const [type, setType] = useState(INPUT_TYPES[0]);
+  const textareaRef = useRef(null);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 130) + "px";
+  }, [text]);
+
+  const submit = () => {
+    if (!text.trim() || sending) return;
+    onSubmit(text.trim(), type.value);
+    setText("");
+    if (textareaRef.current) textareaRef.current.style.height = "auto";
+  };
+
+  const TypeIcon = type.icon;
+
+  return (
+    <div
+      className="sticky bottom-0 z-10 border-t px-5 py-4"
+      style={{
+        borderColor: "rgba(255,255,255,0.06)",
+        background: "linear-gradient(to top, #071828 70%, rgba(7,24,40,0.88))",
+        backdropFilter: "blur(10px)",
+      }}
+    >
+      <div className="mx-auto max-w-3xl space-y-2.5">
+        {/* Type tabs */}
+        <div className="flex items-center gap-1.5">
+          {INPUT_TYPES.map((t) => {
+            const TIcon = t.icon;
+            const active = type.value === t.value;
+            return (
+              <button
+                key={t.value}
+                onClick={() => setType(t)}
+                className="flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold transition-all"
+                style={{
+                  color: active ? t.color : "#4b5563",
+                  background: active ? `${t.color}12` : "transparent",
+                  border: `1px solid ${active ? `${t.color}25` : "transparent"}`,
+                }}
+              >
+                <TIcon size={12} />
+                {t.label}
+                {active && (
+                  <span
+                    className="h-1.5 w-1.5 rounded-full"
+                    style={{ background: t.color }}
+                  />
+                )}
+              </button>
+            );
+          })}
+          <span className="ml-auto text-[11px] text-gray-700">Ctrl+Enter</span>
+        </div>
+
+        {/* Textarea + Send */}
+        <div className="flex items-end gap-2.5">
+          <div
+            className="flex flex-1 items-start gap-3 rounded-xl px-4 py-3 transition-all duration-200"
+            style={{
+              background: "#0c1e2e",
+              border: `1px solid ${text ? `${type.color}30` : "rgba(255,255,255,0.06)"}`,
+              boxShadow: text ? `0 0 0 3px ${type.color}08` : "none",
+            }}
+          >
+            <TypeIcon
+              size={15}
+              className="mt-0.5 shrink-0"
+              style={{ color: text ? type.color : "#374151" }}
+            />
+            <textarea
+              ref={textareaRef}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) submit();
+              }}
+              placeholder={type.placeholder}
+              rows={2}
+              className="flex-1 resize-none bg-transparent text-sm text-white placeholder-gray-600 focus:outline-none"
+              style={{ lineHeight: "1.6", maxHeight: 130 }}
+            />
+          </div>
+
+          <button
+            onClick={submit}
+            disabled={!text.trim() || sending}
+            className="flex shrink-0 items-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold text-white transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-30"
+            style={{
+              background: text.trim()
+                ? `linear-gradient(135deg, ${type.color}, ${type.color}88)`
+                : "rgba(255,255,255,0.04)",
+              border: `1px solid ${text.trim() ? `${type.color}35` : "rgba(255,255,255,0.05)"}`,
+              boxShadow: text.trim() ? `0 4px 16px ${type.color}35` : "none",
+            }}
+          >
+            {sending ? (
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+            ) : (
+              <>
+                <span>Yuborish</span>
+                <SendHorizonal size={15} />
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// MAIN
+// ─────────────────────────────────────────────────────────────────────────
+const LeadDetails = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const leadId = searchParams.get("leadId");
   const token = localStorage.getItem("user");
   const projectId = localStorage.getItem("projectId");
 
-  const [dealData, setDealData] = useState([]);
+  const [dealData, setDealData] = useState(null);
   const [events, setEvents] = useState([]);
-  const [activeTab, setActiveTab] = useState("asosiy");
-  const [noteText, setNoteText] = useState("");
-  const [loading, setLoading] = useState(true);
   const [leadSource, setLeadSource] = useState([]);
+  const [activeTab, setActiveTab] = useState("asosiy");
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
 
-  const [searchParams] = useSearchParams();
-  const leadId = searchParams.get("leadId");
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  };
 
-  // Projectlarni barchasini olish
+  // ── Parallel fetch on mount ─────────────────────────────────────────
   useEffect(() => {
-    const fetchLeadSource = async () => {
-      try {
-        const res = await fetch(
-          `${import.meta.env.VITE_VITE_API_KEY_PROHOME}/lead-source/${projectId}`,
-          {
-            method: "GET",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-          },
-        );
+    if (!token || !leadId) return;
 
-        if (!res.ok) {
-          throw new Error(`Xato ${res.status} ,${res.statusText}`);
+    const init = async () => {
+      try {
+        const [leadRes, descRes, sourceRes] = await Promise.all([
+          fetch(`${API}/leeds/${leadId}`, { headers }),
+          fetch(`${API}/Description/lead/${leadId}?projectId=${projectId}`, {
+            headers,
+          }),
+          fetch(`${API}/lead-source/${projectId}`, { headers }),
+        ]);
+
+        if (leadRes.status === 401) {
+          localStorage.clear();
+          navigate("/login");
+          return;
         }
 
-        const data = await res.json();
-        setLeadSource(data);
+        const [lead, descs, sources] = await Promise.all([
+          leadRes.json(),
+          descRes.ok ? descRes.json() : [],
+          sourceRes.ok ? sourceRes.json() : [],
+        ]);
+
+        setDealData(lead);
+        setEvents(Array.isArray(descs) ? descs : []);
+        setLeadSource(Array.isArray(sources) ? sources : []);
       } catch (err) {
-        console.log(err);
+        console.error(err);
+        toast.error("Ma'lumotlar yuklanmadi");
+      } finally {
+        setLoading(false);
       }
     };
 
-    fetchLeadSource();
+    init();
   }, []);
 
-  //
-
-  // Leadni toliq malumotlarini olish
-  useEffect(() => {
-    fetch(`${import.meta.env.VITE_VITE_API_KEY_PROHOME}/leeds/${leadId}`, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        setLoading(false);
-        setDealData(data);
-      });
-  }, []);
-
-  //
-
-  // Descriptionlarni olib kelish
-  const getDescriptions = () => {
-    fetch(
-      `${import.meta.env.VITE_VITE_API_KEY_PROHOME}/Description/lead/${leadId}?projectId=${projectId}`,
-      {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      },
-    )
-      .then((res) => res.json())
-      .then((data) => {
-        setEvents(data);
-        setLoading(false);
-      });
-  };
-  function getDesc() {
-    getDescriptions();
-  }
-  useEffect(() => {
-    getDesc();
-  }, []);
-
-  //
-
-  // Description yuborish (POST)
-  const handlePostDesc = async (data) => {
-    const dataDesc = {
-      projectId: Number(projectId),
-      leadsId: +leadId,
-      text: data,
-    };
-
-    fetch(`${import.meta.env.VITE_VITE_API_KEY_PROHOME}/Description`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(dataDesc),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        console.log(data);
-        getDescriptions();
-      });
-    setNoteText("");
+  // ── Refresh events ──────────────────────────────────────────────────
+  const refreshEvents = async () => {
+    try {
+      const res = await fetch(
+        `${API}/Description/lead/${leadId}?projectId=${projectId}`,
+        { headers },
+      );
+      if (res.ok) setEvents(await res.json());
+    } catch (err) {
+      console.error(err);
+    }
   };
 
-  //
-
-  // Lead malumotlarini PATCH qilish
-  const handleChange = (event) => {
-    const { name, value } = event.target;
-
-    setDealData({
-      ...dealData,
-      [name]: value,
-    });
+  // ── Post comment / task ─────────────────────────────────────────────
+  const handlePostDesc = async (text, type) => {
+    setSending(true);
+    try {
+      if (type === "tasks") {
+        const res = await fetch(`${API}/tasks`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            projectId: Number(projectId),
+            leadsId: Number(leadId),
+            description: text,
+          }),
+        });
+        if (!res.ok) throw new Error();
+      } else {
+        const res = await fetch(`${API}/Description`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            projectId: Number(projectId),
+            leadsId: Number(leadId),
+            text,
+          }),
+        });
+        if (!res.ok) throw new Error();
+      }
+      await refreshEvents();
+      toast.success(
+        type === "tasks" ? "Task qo'shildi ✅" : "Izoh qo'shildi ✅",
+      );
+    } catch {
+      toast.error("Yuborishda xato ❌");
+    } finally {
+      setSending(false);
+    }
   };
-  const handleSubmit = async (event) => {
-    event.preventDefault();
 
-    const submitData = {
+  // ── Update lead (PATCH) ─────────────────────────────────────────────
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setDealData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const body = {
       firstName: dealData.firstName,
       lastName: dealData.lastName,
       phone: dealData.phone,
@@ -164,337 +430,271 @@ const leadDetails = () => {
       leadSourceId: Number(dealData.leadSourceId),
       projectId: Number(projectId),
       tag: dealData.tag,
-      birthDate: new Date(dealData.birthDate).toISOString().split("T")[0],
+      birthDate: dealData.birthDate
+        ? new Date(dealData.birthDate).toISOString().split("T")[0]
+        : undefined,
     };
 
-    // ✅ toast.promise bilan
     toast.promise(
-      fetch(`${import.meta.env.VITE_VITE_API_KEY_PROHOME}/leeds/${leadId}`, {
+      fetch(`${API}/leeds/${leadId}`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(submitData),
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          console.log(data);
-          // setActiveTab("asosiy");
-        }),
+        headers,
+        body: JSON.stringify(body),
+      }).then((res) => {
+        if (!res.ok) throw new Error();
+      }),
       {
-        loading: "O'zgartirilmoqda...",
-        success: "Ma'lumotlar muvaffaqiyatli yangilandi ✅",
-        error: "Yangilashda xatolik yuz berdi ❌",
+        loading: "Saqlanmoqda...",
+        success: "Ma'lumotlar yangilandi ✅",
+        error: "Xatolik yuz berdi ❌",
       },
     );
   };
 
-  //
-
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat("uz-UZ").format(amount) + " so'm";
-  };
-
-  //
-
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString("ru-RU", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
-  };
-
-  //
-
-  const formatDateTime = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleString("ru-RU", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
-
-  //
-
+  // ─────────────────────────────────────────────────────────────────────
+  // LOADING SKELETON
+  // ─────────────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="flex h-[94vh] bg-[#0c1e2e] text-gray-200">
-        {/* Left Sidebar Skeleton */}
-        <div className="flex w-96 flex-col border-r border-[#1a3549] bg-[#0f2438]">
-          {/* Header */}
-          <div className="border-b border-[#1a3549] p-4">
-            <div className="mb-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Skeleton className="h-8 w-8 rounded bg-[#1a3549]" />
-                <Skeleton className="h-6 w-24 rounded bg-[#1a3549]" />
-              </div>
-              <Skeleton className="h-8 w-8 rounded bg-[#1a3549]" />
+      <div className="flex h-screen overflow-hidden bg-[#071828] text-gray-200">
+        {/* Left */}
+        <div className="flex w-96 shrink-0 flex-col border-r border-white/[0.05] bg-[#0a1929]">
+          <div className="border-b border-white/[0.05] p-5">
+            <div className="mb-3 flex items-center gap-3">
+              <Skeleton className="h-8 w-8 rounded-xl bg-white/5" />
+              <Skeleton className="h-5 w-28 rounded-lg bg-white/5" />
             </div>
-            <Skeleton className="h-7 w-20 rounded-full bg-[#1a4560]" />
+            <Skeleton className="h-6 w-16 rounded-lg bg-white/5" />
           </div>
-
-          {/* User Info */}
-          <div className="border-b border-[#1a3549] p-4">
-            <div className="mb-4 flex items-center gap-3">
-              <Skeleton className="h-12 w-12 rounded-full bg-[#1a3549]" />
-              <div className="flex-1">
-                <Skeleton className="mb-2 h-5 w-32 rounded bg-[#1a3549]" />
-                <Skeleton className="h-4 w-20 rounded bg-[#1a3549]" />
+          <div className="border-b border-white/[0.05] p-5">
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-11 w-11 rounded-full bg-white/5" />
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-32 rounded bg-white/5" />
+                <Skeleton className="h-3 w-16 rounded bg-white/5" />
               </div>
             </div>
           </div>
-
-          {/* Tabs */}
-          <div className="border-b border-[#1a3549]">
-            <div className="flex">
-              <Skeleton className="h-10 flex-1 rounded-none bg-[#1a3549]/30" />
-              <Skeleton className="h-10 flex-1 rounded-none bg-[#1a3549]/20" />
-            </div>
+          <div className="flex border-b border-white/[0.05]">
+            <Skeleton className="h-10 flex-1 rounded-none bg-white/[0.02]" />
+            <Skeleton className="h-10 flex-1 rounded-none bg-white/[0.02]" />
           </div>
-
-          {/* Details */}
-          <div className="space-y-4 p-4">
-            {/* Project */}
-            <div>
-              <Skeleton className="mb-2 h-3 w-16 rounded bg-[#1a3549]/50" />
-              <Skeleton className="h-5 w-8 rounded bg-[#1a3549]" />
-            </div>
-
-            {/* Mablag' */}
-            <div>
-              <Skeleton className="mb-2 h-3 w-20 rounded bg-[#1a3549]/50" />
-              <Skeleton className="h-5 w-36 rounded bg-[#1a3549]" />
-            </div>
-
-            {/* TANLAGAN_TARIFI */}
-            <div>
-              <Skeleton className="mb-2 h-3 w-32 rounded bg-[#1a3549]/50" />
-              <Skeleton className="h-4 w-12 rounded bg-[#1a3549]" />
-            </div>
-
-            {/* TRANID */}
-            <div>
-              <Skeleton className="mb-2 h-3 w-16 rounded bg-[#1a3549]/50" />
-              <Skeleton className="h-4 w-12 rounded bg-[#1a3549]" />
-            </div>
-
-            {/* Contact Info */}
-            <div className="space-y-3 border-t border-[#1a3549] pt-4">
-              <div>
-                <Skeleton className="mb-1 h-3 w-20 rounded bg-[#1a3549]/50" />
-                <Skeleton className="h-4 w-32 rounded bg-[#1a3549]" />
-              </div>
-              <div>
-                <Skeleton className="mb-1 h-3 w-28 rounded bg-[#1a3549]/50" />
-                <Skeleton className="h-4 w-32 rounded bg-[#1a3549]" />
-              </div>
-              <div>
-                <Skeleton className="mb-1 h-3 w-16 rounded bg-[#1a3549]/50" />
-                <Skeleton className="h-4 w-40 rounded bg-[#1a3549]" />
-              </div>
-            </div>
-
-            {/* Tag */}
-            <div className="border-t border-[#1a3549] pt-4">
-              <div className="flex items-center gap-2">
-                <Skeleton className="h-8 w-8 rounded bg-[#1a3549]" />
-                <Skeleton className="h-5 w-48 rounded bg-[#1a3549]" />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Right Panel Skeleton */}
-        <div className="flex flex-1 flex-col">
-          {/* Search Header */}
-          <div className="border-b border-[#1a3549] bg-[#0f2438] p-4">
-            <Skeleton className="h-10 w-full max-w-md rounded bg-[#1a3549]" />
-          </div>
-
-          {/* Events Area */}
-          <div className="flex-1 overflow-y-auto p-6">
-            <div className="mb-6 flex justify-center">
-              <Skeleton className="h-7 w-32 rounded-full bg-[#1a3549]" />
-            </div>
-
-            <div className="mx-auto max-w-3xl space-y-4">
-              <Skeleton className="mb-6 h-4 w-48 rounded bg-[#1a3549]" />
-
-              {/* Event Cards */}
-              {[1, 2, 3, 4, 5].map((i) => (
-                <div
+          <div className="space-y-4 p-5">
+            {Array(6)
+              .fill(0)
+              .map((_, i) => (
+                <Skeleton
                   key={i}
-                  className="rounded-lg border border-[#1a3549] bg-[#0f2438] p-4"
-                >
-                  <div className="flex items-start gap-3">
-                    <Skeleton className="h-8 w-8 shrink-0 rounded bg-blue-600/30" />
-                    <div className="flex-1 space-y-2">
-                      <Skeleton className="h-4 w-24 rounded bg-[#1a3549]" />
-                      <Skeleton className="h-4 w-full rounded bg-[#1a3549]" />
-                      <Skeleton className="h-4 w-3/4 rounded bg-[#1a3549]" />
-                      <div className="flex justify-end">
-                        <Skeleton className="h-3 w-32 rounded bg-[#1a3549]" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                  className="h-9 w-full rounded-xl bg-white/[0.03]"
+                />
               ))}
-            </div>
-          </div>
-
-          {/* Note Input */}
-          <div className="border-t border-[#1a3549] bg-[#0f2438] p-4">
-            <div className="mx-auto max-w-3xl">
-              <Skeleton className="mb-2 h-4 w-40 rounded bg-[#1a3549]" />
-              <div className="flex items-end gap-3">
-                <Skeleton className="h-20 flex-1 rounded-lg bg-[#1a3549]" />
-                <Skeleton className="h-12 w-28 rounded-lg bg-blue-600/30" />
-              </div>
-            </div>
           </div>
         </div>
 
-        {/* Status Badge - Fixed */}
-        <div className="fixed top-20 right-4">
-          <Skeleton className="h-9 w-40 rounded-full bg-[#1a3549]" />
+        {/* Right */}
+        <div className="flex flex-1 flex-col">
+          <div className="flex justify-end border-b border-white/[0.05] p-4">
+            <Skeleton className="h-8 w-36 rounded-full bg-white/5" />
+          </div>
+          <div className="flex-1 space-y-3 p-6">
+            {Array(5)
+              .fill(0)
+              .map((_, i) => (
+                <Skeleton
+                  key={i}
+                  className="h-24 w-full rounded-xl bg-white/[0.03]"
+                  style={{ animationDelay: `${i * 0.06}s` }}
+                />
+              ))}
+          </div>
+          <div className="border-t border-white/[0.05] p-5">
+            <Skeleton className="h-20 w-full rounded-xl bg-white/[0.03]" />
+          </div>
         </div>
       </div>
     );
   }
 
+  if (!dealData) return null;
+
+  // ─────────────────────────────────────────────────────────────────────
+  // RENDER
+  // ─────────────────────────────────────────────────────────────────────
   return (
-    <div className="flex h-full bg-[#0c1e2e] text-gray-200">
-      <div className="flex w-96 flex-col border-r border-[#1a3549] bg-[#0f2438]">
-        <div className="border-b border-[#1a3549] p-4">
-          <div className="mb-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
+    <div className="flex h-screen overflow-hidden bg-[#071828] text-gray-200">
+      {/* ═══════════ LEFT PANEL ═══════════ */}
+      <div
+        className="flex w-96 shrink-0 flex-col overflow-hidden border-r"
+        style={{ borderColor: "rgba(255,255,255,0.05)", background: "#0a1929" }}
+      >
+        {/* Header */}
+        <div
+          className="shrink-0 border-b px-5 py-4"
+          style={{ borderColor: "rgba(255,255,255,0.05)" }}
+        >
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
               <button
-                className="rounded p-2 hover:bg-[#1a3549]"
                 onClick={() => navigate(-1)}
+                className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/[0.06] text-gray-400 transition-colors hover:bg-white/5 hover:text-white"
               >
-                <ChevronLeft size={20} />
+                <ChevronLeft size={16} />
               </button>
-              <h1 className="text-lg font-semibold">Bitim #{dealData.id}</h1>
+              <h1 className="text-base font-semibold text-white">
+                Bitim #{dealData.id}
+              </h1>
             </div>
-            <button className="rounded p-2 hover:bg-[#1a3549]">
-              <MoreVertical size={20} />
+            <button className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/[0.06] text-gray-500 hover:text-white">
+              <MoreVertical size={15} />
             </button>
           </div>
-
-          <div className="inline-block">
-            <span className="rounded bg-[#1a4560] px-3 py-1 text-sm text-blue-300">
-              {dealData.tag}
+          {dealData.tag && (
+            <span
+              className="inline-block rounded-lg px-3 py-1 text-xs font-medium"
+              style={{
+                background: "rgba(59,130,246,0.12)",
+                color: "#60a5fa",
+                border: "1px solid rgba(59,130,246,0.2)",
+              }}
+            >
+              #{dealData.tag}
             </span>
+          )}
+        </div>
+
+        {/* Avatar */}
+        <div
+          className="shrink-0 border-b px-5 py-4"
+          style={{ borderColor: "rgba(255,255,255,0.05)" }}
+        >
+          <div className="flex items-center gap-3">
+            <div
+              className="flex h-11 w-11 items-center justify-center rounded-full text-base font-bold text-white"
+              style={{ background: "linear-gradient(135deg,#1d4ed8,#7c3aed)" }}
+            >
+              {dealData.firstName?.[0]?.toUpperCase() || "?"}
+            </div>
+            <div>
+              <p className="font-semibold text-white">
+                {dealData.firstName} {dealData.lastName}
+              </p>
+              <p className="text-xs text-gray-600">#{dealData.id} mijoz</p>
+            </div>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
-          <div className="border-b border-[#1a3549] p-4">
-            <div className="mb-4 flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-600 text-lg font-semibold"></div>
-              <div>
-                <h2 className="font-semibold text-white">
-                  {dealData.firstName} {dealData.lastName}
-                </h2>
-                <p className="text-sm text-gray-400">#{dealData.id} mijoz</p>
-              </div>
-            </div>
-          </div>
+        {/* Tabs */}
+        <div
+          className="flex shrink-0 border-b"
+          style={{ borderColor: "rgba(255,255,255,0.05)" }}
+        >
+          {["Asosiy", "Tahrirlash"].map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab.toLowerCase())}
+              className="flex-1 border-b-2 py-3 text-xs font-semibold transition-all"
+              style={{
+                borderBottomColor:
+                  activeTab === tab.toLowerCase() ? "#3b82f6" : "transparent",
+                color: activeTab === tab.toLowerCase() ? "#60a5fa" : "#6b7280",
+              }}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
 
-          <div className="border-b border-[#1a3549]">
-            <div className="flex">
-              {["Asosiy", "Tahrirlash"].map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab.toLowerCase())}
-                  className={`flex-1 border-b-2 py-3 text-sm font-medium transition-colors ${
-                    activeTab === tab.toLowerCase()
-                      ? "border-blue-500 text-blue-400"
-                      : "border-transparent text-gray-400 hover:text-gray-300"
-                  }`}
-                >
-                  {tab}
-                </button>
-              ))}
-            </div>
-          </div>
-          {activeTab === "asosiy" ? (
-            <div className="space-y-4 p-4">
+        {/* Tab content */}
+        <div className="scrollbar-hide flex-1 overflow-y-auto">
+          {/* ── Asosiy tab ──────────────────────────────────────────── */}
+          {activeTab === "asosiy" && (
+            <div className="space-y-4 p-5">
+              {/* Project */}
               <div>
-                <label className="mb-1 block text-xs text-gray-500 uppercase">
-                  Project
-                </label>
-                {/* Project name qoyish kerak */}
-                <p className="font-medium text-white">
-                  {dealData?.project?.name}
+                <p className="mb-0.5 text-[11px] text-gray-600 uppercase">
+                  Loyiha
+                </p>
+                <p className="text-sm font-medium text-white">
+                  {dealData?.project?.name || "—"}
                 </p>
               </div>
+
+              {/* Budjet */}
               <div>
-                <label className="mb-1 block text-xs text-gray-500 uppercase">
-                  Mablag'
-                </label>
-                <p className="flex items-center gap-2 font-medium text-white">
-                  <HandCoins size={16} className="text-yellow-400" />
-                  {formatCurrency(dealData.budjet)}
+                <p className="mb-0.5 text-[11px] text-gray-600 uppercase">
+                  Budjet
                 </p>
+                <div className="flex items-center gap-2">
+                  <HandCoins size={14} className="text-yellow-400" />
+                  <p className="text-sm font-medium text-white">
+                    {formatCurrency(dealData.budjet)}
+                  </p>
+                </div>
               </div>
-              {/* TANLAGAN_TARIFI */}
+
+              {/* Operator */}
               <div>
-                <label className="mb-1 block text-xs text-gray-500 uppercase">
+                <p className="mb-0.5 text-[11px] text-gray-600 uppercase">
                   Operator
-                </label>
-                <p className="text-white">{dealData?.assignedUser?.fullName}</p>
+                </p>
+                <p className="text-sm text-white">
+                  {dealData?.assignedUser?.fullName || "—"}
+                </p>
               </div>
-              {/* TRANID */}
+
+              {/* Lead source */}
               <div>
-                <label className="mb-1 block text-xs text-gray-500 uppercase">
-                  Manbaa
-                </label>
-                <p className="text-white">{dealData?.leadSource?.name}</p>
+                <p className="mb-0.5 text-[11px] text-gray-600 uppercase">
+                  Manba
+                </p>
+                <p className="text-sm text-white">
+                  {dealData?.leadSource?.name || "—"}
+                </p>
               </div>
-              <div className="border-t border-[#1a3549] pt-4">
-                <div className="space-y-2">
+
+              <div
+                className="border-t pt-4"
+                style={{ borderColor: "rgba(255,255,255,0.05)" }}
+              >
+                <div className="space-y-3">
                   {/* Phone */}
                   <div>
-                    <label className="text-xs text-gray-500">Tel raqam:</label>
+                    <p className="text-[11px] text-gray-600">Tel raqam</p>
                     <div className="flex items-center gap-2">
-                      <Phone size={14} className="text-gray-400" />
+                      <Phone size={13} className="shrink-0 text-blue-400" />
                       <a
                         href={`tel:${dealData.phone}`}
                         className="text-sm text-blue-400 hover:underline"
                       >
-                        {dealData.phone}
+                        {dealData.phone || "—"}
                       </a>
                     </div>
                   </div>
 
+                  {/* Extra phone */}
                   <div>
-                    <label className="text-xs text-gray-500">
-                      Qo'shimcha raqam:
-                    </label>
-                    <p className="flex items-center gap-2 text-sm text-white">
-                      <Phone size={14} className="text-gray-400" />
+                    <p className="text-[11px] text-gray-600">
+                      Qo'shimcha raqam
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Phone size={13} className="shrink-0 text-blue-400" />
                       <a
                         href={`tel:${dealData.extraPhone}`}
                         className="text-sm text-blue-400 hover:underline"
                       >
-                        {dealData.extraPhone}
+                        {dealData.extraPhone || "—"}
                       </a>
-                    </p>
+                    </div>
                   </div>
 
+                  {/* Birthdate */}
                   <div>
-                    <label className="text-xs text-gray-500">
-                      Tug'ulgan sanasi:
-                    </label>
+                    <p className="text-[11px] text-gray-600">Tug'ilgan sana</p>
                     <div className="flex items-center gap-2">
-                      <Calendar size={14} className="text-gray-400" />
+                      <Calendar
+                        size={13}
+                        className="shrink-0 text-yellow-400"
+                      />
                       <p className="text-sm text-white">
                         {formatDate(dealData.birthDate)}
                       </p>
@@ -503,139 +703,128 @@ const leadDetails = () => {
 
                   {/* Address */}
                   <div>
-                    <label className="text-xs text-gray-500">Manzil:</label>
+                    <p className="text-[11px] text-gray-600">Manzil</p>
                     <div className="flex items-center gap-2">
-                      <MapPin size={14} className="text-gray-400" />
-                      <p className="text-sm text-white">{dealData.adress}</p>
+                      <MapPin size={13} className="shrink-0 text-red-400" />
+                      <p className="text-sm text-white">
+                        {dealData.adress || "—"}
+                      </p>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
-          ) : (
-            <form
-              className="w-full max-w-sm p-5 text-white"
-              onSubmit={handleSubmit}
-            >
+          )}
+
+          {/* ── Tahrirlash tab ──────────────────────────────────────── */}
+          {activeTab === "tahrirlash" && (
+            <form className="p-5 text-white" onSubmit={handleSubmit}>
               <FieldGroup>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-3">
                   <Field>
-                    <FieldLabel htmlFor="form-name">Ism</FieldLabel>
+                    <FieldLabel>Ism</FieldLabel>
                     <Input
-                      id="form-name"
                       type="text"
                       name="firstName"
-                      value={dealData.firstName}
+                      value={dealData.firstName || ""}
                       onChange={handleChange}
-                      placeholder="Ism kiriting!"
+                      placeholder="Ism"
                       required
                     />
                   </Field>
-
                   <Field>
-                    <FieldLabel htmlFor="form-email">Familiya</FieldLabel>
+                    <FieldLabel>Familiya</FieldLabel>
                     <Input
-                      id="form-email"
                       type="text"
                       name="lastName"
-                      value={dealData.lastName}
+                      value={dealData.lastName || ""}
                       onChange={handleChange}
-                      placeholder="Familiya kiriting!s"
+                      placeholder="Familiya"
                     />
                   </Field>
                 </div>
 
                 <Field>
-                  <FieldLabel htmlFor="form-birthDate">
-                    Tug'ilgan sana:
-                  </FieldLabel>
+                  <FieldLabel>Tug'ilgan sana</FieldLabel>
                   <Input
-                    id="form-birthDate"
                     type="date"
                     name="birthDate"
-                    value={dealData.birthDate ?? ""}
+                    value={dealData.birthDate?.slice(0, 10) ?? ""}
                     onChange={handleChange}
-                    placeholder="123 Main St"
+                    max={maxBirthDate}
                   />
+                  <p className="mt-0.5 text-[11px] text-gray-600">
+                    18 yoshdan katta (max: {maxBirthDate.slice(0, 4)}-yil)
+                  </p>
                 </Field>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-3">
                   <Field>
-                    <FieldLabel htmlFor="form-phone">Telefon raqam</FieldLabel>
+                    <FieldLabel>Telefon</FieldLabel>
                     <Input
-                      id="form-phone"
                       type="tel"
                       name="phone"
-                      value={dealData.phone}
+                      value={dealData.phone || ""}
                       onChange={handleChange}
-                      placeholder="+998 ** *** ** **"
+                      placeholder="+998 __ ___ __ __"
                     />
                   </Field>
-
                   <Field>
-                    <FieldLabel htmlFor="form-extraphone">
-                      Qo'shimcha raqam
-                    </FieldLabel>
+                    <FieldLabel>Qo'shimcha</FieldLabel>
                     <Input
-                      id="form-extraphone"
                       type="tel"
                       name="extraPhone"
-                      value={dealData.extraPhone}
+                      value={dealData.extraPhone || ""}
                       onChange={handleChange}
-                      placeholder="+998 ** *** ** **"
+                      placeholder="+998 __ ___ __ __"
                     />
                   </Field>
                 </div>
 
                 <Field>
-                  <FieldLabel htmlFor="form-address">Address</FieldLabel>
+                  <FieldLabel>Manzil</FieldLabel>
                   <Input
-                    id="form-address"
                     type="text"
                     name="adress"
-                    value={dealData.adress}
+                    value={dealData.adress || ""}
                     onChange={handleChange}
-                    placeholder="123 Main St"
+                    placeholder="Manzil"
                   />
                 </Field>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-3">
                   <Field>
-                    <FieldLabel htmlFor="form-budjet">Budjet</FieldLabel>
+                    <FieldLabel>Budjet</FieldLabel>
                     <Input
-                      id="form-budjet"
                       type="number"
                       name="budjet"
-                      value={dealData.budjet}
+                      value={dealData.budjet || ""}
                       onChange={handleChange}
-                      placeholder="*** ***   so`m"
+                      placeholder="so'm"
                     />
                   </Field>
-
                   <Field>
-                    <FieldLabel htmlFor="form-source">Manbaa</FieldLabel>
-
+                    <FieldLabel>Manba</FieldLabel>
                     <Select
                       value={
                         dealData.leadSourceId
-                          ? dealData.leadSourceId.toString()
+                          ? String(dealData.leadSourceId)
                           : ""
                       }
-                      onValueChange={(value) => {
-                        setDealData({
-                          ...dealData,
-                          leadSourceId: parseInt(value),
-                        });
-                      }}
+                      onValueChange={(v) =>
+                        setDealData((prev) => ({
+                          ...prev,
+                          leadSourceId: parseInt(v),
+                        }))
+                      }
                     >
-                      <SelectTrigger id="form-source">
+                      <SelectTrigger>
                         <SelectValue placeholder="Tanlang..." />
                       </SelectTrigger>
-
-                      <SelectContent className="mt-10">
-                        {leadSource.map((data) => (
-                          <SelectItem key={data.id} value={data.id.toString()}>
-                            {data.name}
+                      <SelectContent className="mt-2">
+                        {leadSource.map((s) => (
+                          <SelectItem key={s.id} value={String(s.id)}>
+                            {s.name}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -644,165 +833,116 @@ const leadDetails = () => {
                 </div>
 
                 <Field>
-                  <FieldLabel htmlFor="form-tag">Teg:</FieldLabel>
+                  <FieldLabel>Teg</FieldLabel>
                   <Input
-                    id="form-tag"
                     type="text"
                     name="tag"
-                    value={dealData.tag}
+                    value={dealData.tag || ""}
                     onChange={handleChange}
-                    placeholder="Teg yozing qirish uchun oson bo`ladi..."
+                    placeholder="Teg..."
                   />
                 </Field>
 
-                <Field orientation="horizontal">
+                <div className="flex gap-2 pt-1">
                   <Button
                     type="button"
                     variant="outline"
-                    className={
-                      "text-[#0f2438] hover:bg-[#0f2438] hover:text-white"
-                    }
+                    onClick={() => setActiveTab("asosiy")}
+                    className="flex-1 text-gray-400 hover:text-white"
                   >
-                    Cancel
+                    Bekor
                   </Button>
-
                   <Button
                     type="submit"
-                    className={
-                      "border bg-[#0f2438] hover:bg-[#006400] hover:text-white"
-                    }
+                    className="flex-1 bg-blue-600 hover:bg-blue-500"
                   >
-                    Submit
+                    Saqlash
                   </Button>
-                </Field>
+                </div>
               </FieldGroup>
             </form>
           )}
         </div>
       </div>
 
-      <div className="flex flex-1 flex-col">
-        <div className="border-b border-[#1a3549] bg-[#0f2438] p-4">
-          <div className="flex items-center justify-between">
-            <div className="relative max-w-md flex-1">
-              <input
-                type="text"
-                placeholder="Поиск и фильтр"
-                className="w-full rounded border border-[#1a3549] bg-[#0c1e2e] px-4 py-2 pl-10 text-sm focus:border-blue-500 focus:outline-none"
-              />
-              <div className="absolute top-1/2 left-3 -translate-y-1/2 text-gray-500">
-                <Search />
-              </div>
+      {/* ═══════════ RIGHT PANEL ═══════════ */}
+      <div className="flex flex-1 flex-col overflow-hidden">
+        {/* Status bar */}
+        <div
+          className="flex shrink-0 items-center justify-end border-b px-5 py-3"
+          style={{
+            borderColor: "rgba(255,255,255,0.05)",
+            background: "#071828",
+          }}
+        >
+          {dealData?.status && (
+            <div
+              className="rounded-full px-4 py-1.5 text-xs font-semibold text-white"
+              style={{
+                background: dealData.status.color || "#3b82f6",
+                boxShadow: `0 2px 12px ${dealData.status.color || "#3b82f6"}50`,
+              }}
+            >
+              {dealData.status.name}
             </div>
-
-            <div>
-              <div
-                className="rounded-full px-4 py-2 text-sm font-medium text-white shadow-lg"
-                style={{ backgroundColor: dealData?.status?.color }}
-              >
-                {dealData?.status?.name}
-              </div>
-            </div>
-          </div>
+          )}
         </div>
 
-        <div className="max-h-[72vh] flex-1 overflow-y-auto p-6">
-          <div className="mb-6 p-6">
-            <div className="mb-6 text-center">
-              <span className="rounded-full border border-[#1a3549] bg-[#0f2438] px-4 py-1 text-sm text-gray-400">
-                Декабрь, 2025
-              </span>
-            </div>
-
-            <div className="mx-auto max-w-3xl space-y-6">
-              <div className="mb-8">
-                <div className="mb-2 text-sm text-gray-400">
-                  {formatDateTime(dealData.createdAt)} • Создание: 3 события
-                </div>
-              </div>
-
-              {events.map((event) => (
-                <div
-                  key={event.id}
-                  className="rounded-lg border border-[#1a3549] bg-[#0f2438] p-4"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-blue-600">
-                      {event.type === "message" ? (
-                        <MessageSquare size={16} />
-                      ) : event.type === "status_change" ? (
-                        <Tag size={16} />
-                      ) : (
-                        <Tag size={16} />
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <div className="mb-2 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-blue-400">
-                            {event.user.role}
-                          </span>
-                        </div>
-                      </div>
-                      <p className="text-sm leading-relaxed text-gray-300">
-                        {event.text}
-                      </p>
-
-                      <span className="flex justify-end text-sm font-medium text-white">
-                        {formatDateTime(event.createdAt)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-
-              {/* Date Separator */}
-              <div className="my-8 text-center">
-                <span className="rounded-full border border-[#1a3549] bg-[#0f2438] px-4 py-1 text-sm text-gray-400">
-                  27.01.2026
+        {/* Events feed */}
+        <div
+          className="scrollbar-hide flex-1 overflow-y-auto px-6 py-5"
+          style={{
+            scrollbarWidth: "thin",
+            scrollbarColor: "#1a3549 transparent",
+          }}
+        >
+          <div className="mx-auto max-w-2xl">
+            {/* Month divider */}
+            {dealData.createdAt && (
+              <div className="mb-5 flex items-center gap-3">
+                <div className="h-px flex-1 bg-white/[0.04]" />
+                <span className="rounded-full border border-white/[0.06] bg-white/[0.02] px-4 py-1 text-xs text-gray-600">
+                  {formatMonthYear(dealData.createdAt)}
                 </span>
+                <div className="h-px flex-1 bg-white/[0.04]" />
               </div>
-            </div>
+            )}
+
+            {/* Created info */}
+            {dealData.createdAt && (
+              <div className="mb-4 flex items-center gap-2 text-xs text-gray-700">
+                <Tag size={10} />
+                {formatDateTime(dealData.createdAt)} • Lead yaratildi
+              </div>
+            )}
+
+            {/* Events */}
+            {events.length === 0 ? (
+              <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
+                <MessageSquare size={36} className="text-gray-800" />
+                <p className="text-sm text-gray-600">Hali faoliyat yo'q</p>
+                <p className="text-xs text-gray-700">
+                  Izoh yoki task qo'shish uchun pastdagi maydondan foydalaning
+                </p>
+              </div>
+            ) : (
+              events.map((event) => <EventCard key={event.id} event={event} />)
+            )}
           </div>
         </div>
 
-        {/* Note Input */}
-        <div className="border-t border-[#1a3549] bg-[#0f2438] p-4">
-          <div className="mx-auto max-w-3xl">
-            <div className="mb-2 flex items-center gap-2 text-sm text-blue-400">
-              {/* <Select>
-                <SelectValue />
-
-                <SelectContent>
-                  <SelectItem>Task</SelectItem>
-                </SelectContent>
-              </Select> */}
-              <MessageSquare size={16} />
-              <span>Привлечение:</span>
-            </div>
-            <div className="flex items-end gap-3">
-              <div className="flex min-h-15 flex-1 items-center justify-center rounded-lg border border-[#1a3549] bg-[#0c1e2e] p-3 focus-within:border-blue-500">
-                <textarea
-                  value={noteText}
-                  onChange={(e) => setNoteText(e.target.value)}
-                  placeholder="Напишите комментарий..."
-                  className="w-full resize-none bg-transparent text-sm focus:outline-none"
-                  rows="2"
-                />
-              </div>
-              <button
-                onClick={() => handlePostDesc(noteText)}
-                className="item flex gap-2 rounded-lg bg-blue-600 px-6 py-3 text-sm font-medium transition-colors hover:bg-blue-700"
-              >
-                Yuborish
-                <SendHorizonal size={20} />
-              </button>
-            </div>
-          </div>
-        </div>
+        {/* Input bar */}
+        <InputBar onSubmit={handlePostDesc} sending={sending} />
       </div>
+
+      <style>{`
+        @keyframes fadeUp {
+          from { opacity: 0; transform: translateY(10px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
     </div>
   );
 };
 
-export default leadDetails;
+export default LeadDetails;

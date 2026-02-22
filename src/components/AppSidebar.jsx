@@ -111,18 +111,20 @@ export default function AppSidebar() {
                 <NavLink
                   to="/profile"
                   className={({ isActive }) =>
-                    `group mx-auto flex items-center justify-center rounded-lg px-5 hover:text-gray-900 ${
+                    `group mx-auto flex items-center justify-center rounded-lg px-5 ${
                       isActive
                         ? "bg-blue-600 text-white"
                         : "text-gray-300 hover:bg-gray-700/50 hover:text-white"
                     }`
                   }
                 >
-                  {user.role?.charAt(0)?.toUpperCase() || "U"}
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full border border-gray-300">
+                    {user.role?.charAt(0)?.toUpperCase() || "U"}
+                  </span>
 
                   {!isCollapsed && (
                     <div className="ml-3 flex min-w-0 flex-col">
-                      <span className="truncate text-sm font-medium text-white hover:text-gray-900">
+                      <span className="truncate text-sm font-medium">
                         {user.role || "User"}
                       </span>
                       <span className="truncate text-xs text-gray-400">
@@ -134,10 +136,14 @@ export default function AppSidebar() {
               </SidebarMenuButton>
             </SidebarMenuItem>
 
-            <div className="h-[1px] bg-gray-300" />
+            <div className="h-px bg-gray-300" />
 
             <SidebarMenuItem>
-              <SidebarMenuButton asChild tooltip="Settings">
+              <SidebarMenuButton
+                className="hover:bg-red-600/50 hover:text-white"
+                asChild
+                tooltip="Settings"
+              >
                 <NavLink
                   to="/login"
                   onClick={() => localStorage.clear()}
