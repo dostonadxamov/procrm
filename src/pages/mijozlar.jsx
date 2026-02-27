@@ -6,7 +6,7 @@ import {
   Loader2,
   CalendarCheck2,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Skeleton } from "../components/ui/skeleton";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import {
@@ -353,7 +353,7 @@ export default function Pipeline() {
   // ── NO PROJECT ────────────────────────────────────────────────────────────
   if (appState === "no-project") {
     return (
-      <>
+      <section className="h-[80vh]">
         {toast && <Toast {...toast} onClose={() => setToast(null)} />}
         <div className="sticky top-0 z-10 flex items-center gap-4 border-b border-[#284860] bg-[#0f2231] p-6 text-white">
           <Select
@@ -374,7 +374,8 @@ export default function Pipeline() {
             </SelectContent>
           </Select>
         </div>
-        <div className="flex flex-1 flex-col items-center justify-center gap-6 bg-[#0d1e35]">
+
+        <div className="flex h-full flex-col items-center justify-center gap-4 bg-[#0d1e35] p-6 text-center">
           {projects.length === 0 ? (
             <>
               <AlertCircle className="h-12 w-12 text-yellow-400" />
@@ -382,8 +383,15 @@ export default function Pipeline() {
                 Loyiha topilmadi
               </p>
               <p className="text-sm text-gray-400">
-                Administrator bilan bog'laning
+                Avval loyha (project) yarating yoki admin bilan bog'laning.
               </p>
+
+              <Link
+                to="/projects"
+                className="rounded-xl border border-blue-400 px-4 py-2 text-blue-400 hover:bg-blue-400 hover:text-white"
+              >
+                Projects
+              </Link>
             </>
           ) : (
             <>
@@ -405,7 +413,7 @@ export default function Pipeline() {
             </>
           )}
         </div>
-      </>
+      </section>
     );
   }
 

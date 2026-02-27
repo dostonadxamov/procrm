@@ -13,6 +13,8 @@ import {
   CheckSquare,
   ArrowRightLeft,
   Clock,
+  CheckCircle2,
+  AlertCircle,
 } from "lucide-react";
 import {
   Select,
@@ -64,6 +66,18 @@ const formatMonthYear = (dateString) => {
   });
 };
 
+// Task muddati o'tganmi yoki yaqinmi?
+const getTaskStatus = (taskDate) => {
+  if (!taskDate) return null;
+  const now = new Date();
+  const due = new Date(taskDate);
+  const diffMs = due - now;
+  const diffH = diffMs / (1000 * 60 * 60);
+  if (diffMs < 0) return "overdue"; // o'tib ketgan
+  if (diffH < 24) return "soon"; // 24 soat qolgan
+  return "ok";
+};
+
 const maxBirthDate = (() => {
   const d = new Date();
   d.setFullYear(d.getFullYear() - 18);
@@ -104,13 +118,42 @@ const INPUT_TYPES = [
 ];
 
 // ─────────────────────────────────────────────────────────────────────────
-// EVENT CARD
+// EVENT CARD  ← asosiy o'zgarish
 // ─────────────────────────────────────────────────────────────────────────
 function EventCard({ event }) {
   const cfg = getCfg(event.type);
   const Icon = cfg.icon;
+  const isTask = event.type === "tasks";
+  const taskStatus = isTask ? getTaskStatus(event.taskDate) : null;
+
+  const taskStatusCfg = {
+    overdue: {
+      color: "#ef4444",
+      bg: "rgba(239,68,68,0.1)",
+      border: "rgba(239,68,68,0.2)",
+      icon: AlertCircle,
+      label: "Muddati o'tgan",
+    },
+    soon: {
+      color: "#f59e0b",
+      bg: "rgba(245,158,11,0.1)",
+      border: "rgba(245,158,11,0.2)",
+      icon: Clock,
+      label: "Yaqinlashmoqda",
+    },
+    ok: {
+      color: "#10b981",
+      bg: "rgba(16,185,129,0.08)",
+      border: "rgba(16,185,129,0.18)",
+      icon: CheckCircle2,
+      label: "Rejalashtirilgan",
+    },
+  };
+  const tsCfg = taskStatus ? taskStatusCfg[taskStatus] : null;
+
   return (
     <div className="group flex gap-3">
+      {/* Timeline dot */}
       <div className="flex flex-col items-center">
         <div
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl"
@@ -127,49 +170,110 @@ function EventCard({ event }) {
         />
       </div>
 
+      {/* Card */}
       <div
-        className="bg-white/025 mb-3 flex-1 overflow-hidden rounded-xl border border-white/[0.05] p-4 transition-colors group-hover:bg-white/4"
-        style={{ borderLeft: `2px solid ${cfg.color}35` }}
+        className="mb-3 flex-1 overflow-hidden rounded-xl border border-white/[0.05] p-4 transition-colors group-hover:bg-white/[0.02]"
+        style={{
+          background: isTask
+            ? "rgba(16,185,129,0.03)"
+            : "rgba(255,255,255,0.015)",
+          borderLeft: `2px solid ${cfg.color}35`,
+        }}
       >
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
+        {/* Header row */}
+        <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Type badge */}
             <span
               className="rounded-md px-2 py-0.5 text-[10px] font-bold tracking-wider uppercase"
               style={{ color: cfg.color, background: `${cfg.color}15` }}
             >
               {cfg.label}
             </span>
+
+            {/* Task status badge */}
+            {isTask && tsCfg && (
+              <span
+                className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold"
+                style={{
+                  color: tsCfg.color,
+                  background: tsCfg.bg,
+                  border: `1px solid ${tsCfg.border}`,
+                }}
+              >
+                <tsCfg.icon size={9} />
+                {tsCfg.label}
+              </span>
+            )}
+
             {event.user?.role && (
               <span className="text-xs text-gray-600">{event.user.role}</span>
             )}
           </div>
+
+          {/* Created time */}
           <div className="flex items-center gap-1 text-[11px] text-gray-600">
             <Clock size={10} />
             {formatDateTime(event.createdAt)}
           </div>
         </div>
 
+        {/* Text */}
         <p className="text-sm leading-relaxed text-gray-300">
           {event.text || event.description}
         </p>
 
-        {/* Task: muddat ko'rsat */}
-        {event.type === "tasks" && (
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <span
-              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium"
-              style={{ background: "rgba(16,185,129,0.1)", color: "#10b981" }}
-            >
-              <CheckSquare size={11} /> Vazifa yaratildi
-            </span>
-            {event.taskDate && (
+        {/* ── Task footer: muddat + tegli ko'rinish ── */}
+        {isTask && (
+          <div
+            className="mt-3 flex items-center justify-between gap-3 rounded-lg px-3 py-2.5"
+            style={{
+              background: tsCfg ? tsCfg.bg : "rgba(16,185,129,0.06)",
+              border: `1px solid ${tsCfg ? tsCfg.border : "rgba(16,185,129,0.15)"}`,
+            }}
+          >
+            <div className="flex items-center gap-2">
+              <Calendar
+                size={13}
+                style={{ color: tsCfg ? tsCfg.color : "#10b981" }}
+              />
               <span
-                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium"
-                style={{ background: "rgba(245,158,11,0.1)", color: "#f59e0b" }}
+                className="text-xs font-medium"
+                style={{ color: tsCfg ? tsCfg.color : "#10b981" }}
               >
-                <Calendar size={11} /> {formatDateTime(event.taskDate)}
+                Muddat:
               </span>
+              <span className="text-xs font-bold text-white">
+                {event.taskDate
+                  ? formatDateTime(event.taskDate)
+                  : "Belgilanmagan"}
+              </span>
+            </div>
+            {tsCfg && (
+              <tsCfg.icon
+                size={14}
+                style={{ color: tsCfg.color, flexShrink: 0 }}
+              />
             )}
+          </div>
+        )}
+
+        {/* ── Description footer: tegli ko'rinish ── */}
+        {!isTask && event.tags && event.tags.length > 0 && (
+          <div className="mt-2.5 flex flex-wrap gap-1.5">
+            {event.tags.map((tag, i) => (
+              <span
+                key={i}
+                className="rounded-md px-2 py-0.5 text-[10px] font-medium"
+                style={{
+                  background: "rgba(59,130,246,0.1)",
+                  color: "#60a5fa",
+                  border: "1px solid rgba(59,130,246,0.2)",
+                }}
+              >
+                #{tag}
+              </span>
+            ))}
           </div>
         )}
       </div>
@@ -178,15 +282,318 @@ function EventCard({ event }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// INPUT BAR  ← asosiy o'zgarish shu yerda
+// INPUT BAR
 // ─────────────────────────────────────────────────────────────────────────
+// ─── Inline 24h DateTimePicker ───────────────────────────────────────────────
+function TaskDatePicker({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  const parsed = value ? new Date(value) : null;
+  const today = new Date();
+
+  const [viewYear, setViewYear] = useState(
+    parsed ? parsed.getFullYear() : today.getFullYear(),
+  );
+  const [viewMonth, setViewMonth] = useState(
+    parsed ? parsed.getMonth() : today.getMonth(),
+  );
+  const [selDay, setSelDay] = useState(parsed ? parsed.getDate() : null);
+  const [hour, setHour] = useState(parsed ? parsed.getHours() : 9);
+  const [minute, setMinute] = useState(parsed ? parsed.getMinutes() : 0);
+
+  useEffect(() => {
+    const h = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+
+  const MONTHS = [
+    "Yan",
+    "Fev",
+    "Mar",
+    "Apr",
+    "May",
+    "Iyn",
+    "Iyl",
+    "Avg",
+    "Sen",
+    "Okt",
+    "Noy",
+    "Dek",
+  ];
+  const WDAYS = ["Du", "Se", "Ch", "Pa", "Ju", "Sh", "Ya"];
+  const pad = (n) => String(n).padStart(2, "0");
+
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const firstDay = (() => {
+    const d = new Date(viewYear, viewMonth, 1).getDay();
+    return d === 0 ? 6 : d - 1;
+  })();
+  const isPast = (d) =>
+    new Date(viewYear, viewMonth, d) <
+    new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+  const prevMonth = () =>
+    viewMonth === 0
+      ? (setViewMonth(11), setViewYear((y) => y - 1))
+      : setViewMonth((m) => m - 1);
+  const nextMonth = () =>
+    viewMonth === 11
+      ? (setViewMonth(0), setViewYear((y) => y + 1))
+      : setViewMonth((m) => m + 1);
+
+  const confirm = () => {
+    if (!selDay) return;
+    // "2025-06-15T14:30:00" — ISO 8601 local, backend new Date() bilan parse qiladi
+    const iso = `${viewYear}-${pad(viewMonth + 1)}-${pad(selDay)}T${pad(hour)}:${pad(minute)}:00`;
+    onChange(iso);
+    setOpen(false);
+  };
+
+  const displayLabel = value
+    ? (() => {
+        const d = new Date(value);
+        return `${d.getDate()} ${MONTHS[d.getMonth()]}, ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      })()
+    : null;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs transition-all"
+        style={{
+          borderColor: value
+            ? "rgba(16,185,129,0.35)"
+            : "rgba(255,255,255,0.07)",
+          background: value
+            ? "rgba(16,185,129,0.07)"
+            : "rgba(255,255,255,0.03)",
+          color: value ? "#e2ffe8" : "#6b7280",
+        }}
+      >
+        <Calendar size={13} style={{ color: value ? "#10b981" : "#4b5563" }} />
+        <span>{displayLabel || "Muddat tanlang"}</span>
+        {value && (
+          <span
+            onClick={(e) => {
+              e.stopPropagation();
+              onChange("");
+            }}
+            className="ml-1 cursor-pointer text-gray-500 transition-colors hover:text-red-400"
+          >
+            ✕
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div
+          className="absolute bottom-full left-0 z-50 mb-2 overflow-hidden rounded-xl shadow-2xl"
+          style={{
+            width: 272,
+            background: "#0a1929",
+            border: "1px solid rgba(255,255,255,0.08)",
+          }}
+        >
+          {/* Month nav */}
+          <div className="flex items-center justify-between border-b border-white/[0.05] px-3 py-2">
+            <button
+              type="button"
+              onClick={prevMonth}
+              className="flex h-6 w-6 items-center justify-center rounded text-base text-gray-500 transition-colors hover:bg-white/10 hover:text-white"
+            >
+              ‹
+            </button>
+            <span className="text-xs font-semibold text-white">
+              {MONTHS[viewMonth]} {viewYear}
+            </span>
+            <button
+              type="button"
+              onClick={nextMonth}
+              className="flex h-6 w-6 items-center justify-center rounded text-base text-gray-500 transition-colors hover:bg-white/10 hover:text-white"
+            >
+              ›
+            </button>
+          </div>
+
+          {/* Weekdays */}
+          <div className="grid grid-cols-7 px-2 pt-2">
+            {WDAYS.map((d) => (
+              <div
+                key={d}
+                className="py-0.5 text-center text-[9px] font-bold text-gray-700 uppercase"
+              >
+                {d}
+              </div>
+            ))}
+          </div>
+
+          {/* Days */}
+          <div className="grid grid-cols-7 gap-y-0.5 px-2 pb-2">
+            {Array(firstDay)
+              .fill(null)
+              .map((_, i) => (
+                <div key={`e${i}`} />
+              ))}
+            {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((d) => {
+              const past = isPast(d);
+              const isSel = selDay === d;
+              const isToday =
+                d === today.getDate() &&
+                viewMonth === today.getMonth() &&
+                viewYear === today.getFullYear();
+              return (
+                <button
+                  key={d}
+                  type="button"
+                  disabled={past}
+                  onClick={() => setSelDay(d)}
+                  className="aspect-square rounded-md text-[11px] transition-all"
+                  style={{
+                    background: isSel
+                      ? "#10b981"
+                      : isToday
+                        ? "rgba(16,185,129,0.12)"
+                        : "transparent",
+                    color: isSel
+                      ? "#fff"
+                      : past
+                        ? "#1e3a4a"
+                        : isToday
+                          ? "#10b981"
+                          : "#c8dce8",
+                    fontWeight: isSel || isToday ? 700 : 400,
+                    cursor: past ? "not-allowed" : "pointer",
+                    border:
+                      isToday && !isSel
+                        ? "1px solid rgba(16,185,129,0.25)"
+                        : "1px solid transparent",
+                  }}
+                >
+                  {d}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* 24h time sliders */}
+          <div className="space-y-2.5 border-t border-white/[0.05] px-3 py-3">
+            <div className="flex items-center gap-2">
+              <span className="w-12 shrink-0 text-right text-[10px] text-gray-600">
+                Soat
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={23}
+                value={hour}
+                onChange={(e) => setHour(+e.target.value)}
+                className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full"
+                style={{
+                  accentColor: "#10b981",
+                  background: `linear-gradient(to right,#10b981 ${(hour / 23) * 100}%,#162840 ${(hour / 23) * 100}%)`,
+                }}
+              />
+              <span className="w-7 shrink-0 text-xs font-bold text-white tabular-nums">
+                {pad(hour)}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-12 shrink-0 text-right text-[10px] text-gray-600">
+                Daqiqa
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={59}
+                step={5}
+                value={minute}
+                onChange={(e) => setMinute(+e.target.value)}
+                className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full"
+                style={{
+                  accentColor: "#10b981",
+                  background: `linear-gradient(to right,#10b981 ${(minute / 59) * 100}%,#162840 ${(minute / 59) * 100}%)`,
+                }}
+              />
+              <span className="w-7 shrink-0 text-xs font-bold text-white tabular-nums">
+                {pad(minute)}
+              </span>
+            </div>
+            {/* Quick time buttons */}
+            <div className="flex flex-wrap gap-1 pt-0.5">
+              {[
+                [9, 0],
+                [10, 0],
+                [12, 0],
+                [14, 0],
+                [16, 0],
+                [18, 0],
+              ].map(([h, m]) => (
+                <button
+                  key={`qt${h}${m}`}
+                  type="button"
+                  onClick={() => {
+                    setHour(h);
+                    setMinute(m);
+                  }}
+                  className="rounded px-2 py-0.5 text-[10px] font-semibold transition-colors"
+                  style={{
+                    background:
+                      hour === h && minute === m
+                        ? "rgba(16,185,129,0.2)"
+                        : "rgba(255,255,255,0.05)",
+                    color: hour === h && minute === m ? "#10b981" : "#4b6070",
+                    border: `1px solid ${hour === h && minute === m ? "rgba(16,185,129,0.3)" : "transparent"}`,
+                  }}
+                >
+                  {pad(h)}:{pad(m)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Confirm footer */}
+          <div
+            className="flex items-center justify-between border-t border-white/[0.05] px-3 py-2"
+            style={{ background: "rgba(255,255,255,0.02)" }}
+          >
+            <span className="text-[11px] text-gray-600">
+              {selDay
+                ? `${selDay} ${MONTHS[viewMonth]}, ${pad(hour)}:${pad(minute)}`
+                : "Kun tanlanmagan"}
+            </span>
+            <button
+              type="button"
+              onClick={confirm}
+              disabled={!selDay}
+              className="rounded-lg px-3 py-1 text-xs font-semibold transition-all"
+              style={{
+                background: selDay ? "#10b981" : "#162840",
+                color: selDay ? "#fff" : "#2a4560",
+                cursor: selDay ? "pointer" : "not-allowed",
+              }}
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── InputBar ─────────────────────────────────────────────────────────────────
 function InputBar({ onSubmit, sending }) {
   const [text, setText] = useState("");
   const [type, setType] = useState(INPUT_TYPES[0]);
-  const [taskDate, setTaskDate] = useState(""); // ← yangi state
+  const [taskDate, setTaskDate] = useState("");
   const textareaRef = useRef(null);
 
-  // Auto-resize
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
@@ -194,7 +601,6 @@ function InputBar({ onSubmit, sending }) {
     el.style.height = Math.min(el.scrollHeight, 130) + "px";
   }, [text]);
 
-  // Type o'zgarganda date ni tozalash
   const handleTypeChange = (t) => {
     setType(t);
     if (t.value !== "tasks") setTaskDate("");
@@ -221,9 +627,8 @@ function InputBar({ onSubmit, sending }) {
       }}
     >
       <div className="mx-auto max-w-3xl space-y-2.5">
-        {/* ── Type tabs + date picker ──────────────────────────── */}
-        <div className="flex items-center gap-2">
-          {/* Tabs */}
+        {/* Type tabs + date picker */}
+        <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1.5">
             {INPUT_TYPES.map((t) => {
               const TIcon = t.icon;
@@ -252,37 +657,13 @@ function InputBar({ onSubmit, sending }) {
             })}
           </div>
 
-          {/* ── Task date picker — faqat task tanlanganda ─────── */}
-          {isTask && (
-            <div
-              className="flex items-center gap-2 rounded-lg border px-3 py-1.5 transition-all"
-              style={{
-                borderColor: taskDate
-                  ? "rgba(16,185,129,0.3)"
-                  : "rgba(255,255,255,0.07)",
-                background: taskDate
-                  ? "rgba(16,185,129,0.06)"
-                  : "rgba(255,255,255,0.03)",
-              }}
-            >
-              <Calendar
-                size={13}
-                style={{ color: taskDate ? "#10b981" : "#4b5563" }}
-              />
-              <input
-                type="datetime-local"
-                value={taskDate}
-                onChange={(e) => setTaskDate(e.target.value)}
-                className="bg-transparent text-xs text-white [color-scheme:dark] outline-none"
-                style={{ color: taskDate ? "#fff" : "#6b7280" }}
-              />
-            </div>
-          )}
+          {/* Custom 24h picker — faqat task tanlanganda */}
+          {isTask && <TaskDatePicker value={taskDate} onChange={setTaskDate} />}
 
           <span className="ml-auto text-[11px] text-gray-700">Ctrl+Enter</span>
         </div>
 
-        {/* ── Textarea + Send ──────────────────────────────────── */}
+        {/* Textarea + send button */}
         <div className="flex items-end gap-2.5">
           <div
             className="flex flex-1 items-start gap-3 rounded-xl px-4 py-3 transition-all duration-200"
@@ -360,31 +741,61 @@ const LeadDetails = () => {
     Authorization: `Bearer ${token}`,
   };
 
-  // ── Parallel fetch ──────────────────────────────────────────────────
+  // userId — localStorage dan
+  const userId = localStorage.getItem("projectId");
+
+  // Description + Task larni birlashtirib, createdAt bo'yicha saralab qaytaradi
+  const mergeEvents = (descs, tasks) => {
+    const descList = (Array.isArray(descs) ? descs : []).map((d) => ({
+      ...d,
+      type: d.type || "Description",
+    }));
+    const taskList = (Array.isArray(tasks) ? tasks : []).map((t) => ({
+      ...t,
+      type: "tasks",
+      text: t.description || t.text,
+    }));
+    return [...descList, ...taskList].sort(
+      (a, b) => new Date(a.createdAt) - new Date(b.createdAt),
+    );
+  };
+
   useEffect(() => {
     if (!token || !leadId) return;
     const init = async () => {
       try {
-        const [leadRes, descRes, sourceRes] = await Promise.all([
+        const requests = [
           fetch(`${API}/leeds/${leadId}`, { headers }),
           fetch(`${API}/Description/lead/${leadId}?projectId=${projectId}`, {
             headers,
           }),
           fetch(`${API}/lead-source/${projectId}`, { headers }),
-        ]);
+          ...(userId ? [fetch(`${API}/tasks/${userId}`, { headers })] : []),
+        ];
+        const [leadRes, descRes, sourceRes, taskRes] =
+          await Promise.all(requests);
+
         if (leadRes.status === 401) {
           localStorage.clear();
           navigate("/login");
           return;
         }
-        const [lead, descs, sources] = await Promise.all([
+
+        const [lead, descs, sources, tasks] = await Promise.all([
           leadRes.json(),
           descRes.ok ? descRes.json() : [],
           sourceRes.ok ? sourceRes.json() : [],
+          taskRes?.ok ? taskRes.json() : [],
         ]);
+
         setDealData(lead);
-        setEvents(Array.isArray(descs) ? descs : []);
         setLeadSource(Array.isArray(sources) ? sources : []);
+
+        // Faqat shu leadga tegishli tasklarni filtrlaymiz
+        const leadTasks = (Array.isArray(tasks) ? tasks : []).filter(
+          (t) => String(t.leadsId) === String(leadId),
+        );
+        setEvents(mergeEvents(descs, leadTasks));
       } catch (err) {
         console.error(err);
         toast.error("Ma'lumotlar yuklanmadi");
@@ -395,21 +806,29 @@ const LeadDetails = () => {
     init();
   }, []);
 
-  // ── Refresh events ──────────────────────────────────────────────────
   const refreshEvents = async () => {
     try {
-      const res = await fetch(
-        `${API}/Description/lead/${leadId}?projectId=${projectId}`,
-        { headers },
+      const requests = [
+        fetch(`${API}/Description/lead/${leadId}?projectId=${projectId}`, {
+          headers,
+        }),
+        ...(userId ? [fetch(`${API}/tasks/${userId}`, { headers })] : []),
+      ];
+      const [descRes, taskRes] = await Promise.all(requests);
+      const descs = descRes?.ok ? await descRes.json() : [];
+      const tasks = taskRes?.ok ? await taskRes.json() : [];
+      const leadTasks = (Array.isArray(tasks) ? tasks : []).filter(
+        (t) => String(t.leadsId) === String(leadId),
       );
-      if (res.ok) setEvents(await res.json());
+      setEvents(mergeEvents(descs, leadTasks));
     } catch (err) {
       console.error(err);
     }
   };
 
-  // ── Post comment / task  ← taskDate ham qabul qiladi ───────────────
-  const handlePostDesc = async (text, type, taskDate) => {
+  const handlePostDesc = async (text, type, date) => {
+    console.log(date);
+
     setSending(true);
     try {
       if (type === "tasks") {
@@ -417,9 +836,11 @@ const LeadDetails = () => {
           projectId: Number(projectId),
           leadsId: Number(leadId),
           description: text,
-          // taskDate bor bo'lsa ISO formatda yuborish
-          ...(taskDate && { taskDate: new Date(taskDate).toISOString() }),
+          ...(date && { date }), // "2025-06-15T14:30:00" — ISO 8601
         };
+
+        console.log(body);
+
         const res = await fetch(`${API}/tasks`, {
           method: "POST",
           headers,
@@ -449,7 +870,6 @@ const LeadDetails = () => {
     }
   };
 
-  // ── Update lead ─────────────────────────────────────────────────────
   const handleChange = (e) => {
     const { name, value } = e.target;
     setDealData((prev) => ({ ...prev, [name]: value }));
@@ -487,9 +907,7 @@ const LeadDetails = () => {
     );
   };
 
-  // ─────────────────────────────────────────────────────────────────────
-  // LOADING
-  // ─────────────────────────────────────────────────────────────────────
+  // ── LOADING ───────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="flex h-screen overflow-hidden bg-[#071828] text-gray-200">
@@ -498,16 +916,6 @@ const LeadDetails = () => {
             <div className="mb-3 flex items-center gap-3">
               <Skeleton className="h-8 w-8 rounded-xl bg-white/5" />
               <Skeleton className="h-5 w-28 rounded-lg bg-white/5" />
-            </div>
-            <Skeleton className="h-6 w-16 rounded-lg bg-white/5" />
-          </div>
-          <div className="border-b border-white/[0.05] p-5">
-            <div className="flex items-center gap-3">
-              <Skeleton className="h-11 w-11 rounded-full bg-white/5" />
-              <div className="space-y-2">
-                <Skeleton className="h-4 w-32 rounded bg-white/5" />
-                <Skeleton className="h-3 w-16 rounded bg-white/5" />
-              </div>
             </div>
           </div>
           <div className="space-y-4 p-5">
@@ -522,9 +930,6 @@ const LeadDetails = () => {
           </div>
         </div>
         <div className="flex flex-1 flex-col">
-          <div className="flex justify-end border-b border-white/[0.05] p-4">
-            <Skeleton className="h-8 w-36 rounded-full bg-white/5" />
-          </div>
           <div className="flex-1 space-y-3 p-6">
             {Array(4)
               .fill(0)
@@ -535,9 +940,6 @@ const LeadDetails = () => {
                 />
               ))}
           </div>
-          <div className="border-t border-white/[0.05] p-5">
-            <Skeleton className="h-20 w-full rounded-xl bg-white/[0.03]" />
-          </div>
         </div>
       </div>
     );
@@ -545,12 +947,10 @@ const LeadDetails = () => {
 
   if (!dealData) return null;
 
-  // ─────────────────────────────────────────────────────────────────────
-  // RENDER
-  // ─────────────────────────────────────────────────────────────────────
+  // ── RENDER ────────────────────────────────────────────────────────────
   return (
     <div className="flex h-screen overflow-hidden bg-[#071828] text-gray-200">
-      {/* ═══════════ LEFT PANEL ═══════════ */}
+      {/* ═══ LEFT PANEL ═══ */}
       <div
         className="flex w-96 shrink-0 flex-col overflow-hidden border-r"
         style={{ borderColor: "rgba(255,255,255,0.05)", background: "#0a1929" }}
@@ -636,14 +1036,12 @@ const LeadDetails = () => {
         <div className="scrollbar-hide flex-1 overflow-y-auto">
           {activeTab === "asosiy" && (
             <div className="space-y-4 p-5">
-              <div>
-                <p className="mb-0.5 text-[11px] text-gray-600 uppercase">
-                  Loyiha
-                </p>
-                <p className="text-sm font-medium text-white">
-                  {dealData?.project?.name || "—"}
-                </p>
-              </div>
+              <InfoRow label="Loyiha" value={dealData?.project?.name} />
+              <InfoRow
+                label="Operator"
+                value={dealData?.assignedUser?.fullName}
+              />
+              <InfoRow label="Manba" value={dealData?.leadSource?.name} />
               <div>
                 <p className="mb-0.5 text-[11px] text-gray-600 uppercase">
                   Budjet
@@ -655,53 +1053,16 @@ const LeadDetails = () => {
                   </p>
                 </div>
               </div>
-              <div>
-                <p className="mb-0.5 text-[11px] text-gray-600 uppercase">
-                  Operator
-                </p>
-                <p className="text-sm text-white">
-                  {dealData?.assignedUser?.fullName || "—"}
-                </p>
-              </div>
-              <div>
-                <p className="mb-0.5 text-[11px] text-gray-600 uppercase">
-                  Manba
-                </p>
-                <p className="text-sm text-white">
-                  {dealData?.leadSource?.name || "—"}
-                </p>
-              </div>
               <div
                 className="border-t pt-4"
                 style={{ borderColor: "rgba(255,255,255,0.05)" }}
               >
                 <div className="space-y-3">
-                  <div>
-                    <p className="text-[11px] text-gray-600">Tel raqam</p>
-                    <div className="flex items-center gap-2">
-                      <Phone size={13} className="shrink-0 text-blue-400" />
-                      <a
-                        href={`tel:${dealData.phone}`}
-                        className="text-sm text-blue-400 hover:underline"
-                      >
-                        {dealData.phone || "—"}
-                      </a>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-[11px] text-gray-600">
-                      Qo'shimcha raqam
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <Phone size={13} className="shrink-0 text-blue-400" />
-                      <a
-                        href={`tel:${dealData.extraPhone}`}
-                        className="text-sm text-blue-400 hover:underline"
-                      >
-                        {dealData.extraPhone || "—"}
-                      </a>
-                    </div>
-                  </div>
+                  <PhoneRow label="Tel raqam" value={dealData.phone} />
+                  <PhoneRow
+                    label="Qo'shimcha raqam"
+                    value={dealData.extraPhone}
+                  />
                   <div>
                     <p className="text-[11px] text-gray-600">Tug'ilgan sana</p>
                     <div className="flex items-center gap-2">
@@ -735,7 +1096,6 @@ const LeadDetails = () => {
                   <Field>
                     <FieldLabel>Ism</FieldLabel>
                     <Input
-                      type="text"
                       name="firstName"
                       value={dealData.firstName || ""}
                       onChange={handleChange}
@@ -746,7 +1106,6 @@ const LeadDetails = () => {
                   <Field>
                     <FieldLabel>Familiya</FieldLabel>
                     <Input
-                      type="text"
                       name="lastName"
                       value={dealData.lastName || ""}
                       onChange={handleChange}
@@ -754,7 +1113,6 @@ const LeadDetails = () => {
                     />
                   </Field>
                 </div>
-
                 <Field>
                   <FieldLabel>Tug'ilgan sana</FieldLabel>
                   <Input
@@ -768,7 +1126,6 @@ const LeadDetails = () => {
                     18 yoshdan katta (max: {maxBirthDate.slice(0, 4)}-yil)
                   </p>
                 </Field>
-
                 <div className="grid grid-cols-2 gap-3">
                   <Field>
                     <FieldLabel>Telefon</FieldLabel>
@@ -791,18 +1148,15 @@ const LeadDetails = () => {
                     />
                   </Field>
                 </div>
-
                 <Field>
                   <FieldLabel>Manzil</FieldLabel>
                   <Input
-                    type="text"
                     name="adress"
                     value={dealData.adress || ""}
                     onChange={handleChange}
                     placeholder="Manzil"
                   />
                 </Field>
-
                 <div className="grid grid-cols-2 gap-3">
                   <Field>
                     <FieldLabel>Budjet</FieldLabel>
@@ -842,18 +1196,15 @@ const LeadDetails = () => {
                     </Select>
                   </Field>
                 </div>
-
                 <Field>
                   <FieldLabel>Teg</FieldLabel>
                   <Input
-                    type="text"
                     name="tag"
                     value={dealData.tag || ""}
                     onChange={handleChange}
                     placeholder="Teg..."
                   />
                 </Field>
-
                 <div className="flex gap-2 pt-1">
                   <Button
                     type="button"
@@ -876,9 +1227,9 @@ const LeadDetails = () => {
         </div>
       </div>
 
-      {/* ═══════════ RIGHT PANEL ═══════════ */}
+      {/* ═══ RIGHT PANEL ═══ */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Status bar */}
+        {/* Status badge */}
         <div
           className="flex shrink-0 items-center justify-end border-b px-5 py-3"
           style={{
@@ -901,24 +1252,25 @@ const LeadDetails = () => {
 
         {/* Events feed */}
         <div className="scrollbar-hide flex-1 overflow-y-auto px-6 py-5">
-          <div className="mx-auto h-[50vh] max-w-2xl">
+          <div className="mx-auto max-w-2xl">
             {dealData.createdAt && (
-              <div className="mb-5 flex items-center gap-3">
-                <div className="h-px flex-1 bg-white/4" />
-                <span className="rounded-full border border-white/6 bg-white/2 px-4 py-1 text-xs text-gray-600">
-                  {formatMonthYear(dealData.createdAt)}
-                </span>
-                <div className="h-px flex-1 bg-white/4" />
-              </div>
+              <>
+                <div className="mb-5 flex items-center gap-3">
+                  <div className="h-px flex-1 bg-white/[0.04]" />
+                  <span className="rounded-full border border-white/[0.06] bg-white/[0.02] px-4 py-1 text-xs text-gray-600">
+                    {formatMonthYear(dealData.createdAt)}
+                  </span>
+                  <div className="h-px flex-1 bg-white/[0.04]" />
+                </div>
+                <div className="mb-4 flex items-center gap-2 text-xs text-gray-700">
+                  <Tag size={10} />
+                  {formatDateTime(dealData.createdAt)} • Lead yaratildi
+                </div>
+              </>
             )}
-            {dealData.createdAt && (
-              <div className="mb-4 flex items-center gap-2 text-xs text-gray-700">
-                <Tag size={10} />
-                {formatDateTime(dealData.createdAt)} • Lead yaratildi
-              </div>
-            )}
+
             {events.length === 0 ? (
-              <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+              <div className="flex h-48 flex-col items-center justify-center gap-3 text-center">
                 <MessageSquare size={36} className="text-gray-800" />
                 <p className="text-sm text-gray-600">Hali faoliyat yo'q</p>
                 <p className="text-xs text-gray-700">
@@ -931,7 +1283,6 @@ const LeadDetails = () => {
           </div>
         </div>
 
-        {/* Input bar */}
         <InputBar onSubmit={handlePostDesc} sending={sending} />
       </div>
 
@@ -944,5 +1295,35 @@ const LeadDetails = () => {
     </div>
   );
 };
+
+// ─── Kichik yordamchi componentlar ───────────────────────────────────────────
+function InfoRow({ label, value }) {
+  return (
+    <div>
+      <p className="mb-0.5 text-[11px] text-gray-600 uppercase">{label}</p>
+      <p className="text-sm font-medium text-white">{value || "—"}</p>
+    </div>
+  );
+}
+function PhoneRow({ label, value }) {
+  return (
+    <div>
+      <p className="text-[11px] text-gray-600">{label}</p>
+      <div className="flex items-center gap-2">
+        <Phone size={13} className="shrink-0 text-blue-400" />
+        {value ? (
+          <a
+            href={`tel:${value}`}
+            className="text-sm text-blue-400 hover:underline"
+          >
+            {value}
+          </a>
+        ) : (
+          <span className="text-sm text-gray-600">—</span>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default LeadDetails;

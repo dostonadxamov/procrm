@@ -5,7 +5,7 @@ import Mijozlar from "./pages/mijozlar";
 import Status from "./pages/status";
 import AddStatus from "./pages/addStatus";
 import Profile from "./pages/profile";
-import Projects from "./pages/loyhalar";
+import Projects from "./pages/project";
 import Setting from "./pages/settings";
 import Tasks from "./pages/task";
 import LeadSource from "./pages/leadSource";
@@ -45,7 +45,7 @@ export function ProtectedLayout() {
       <div className="flex w-full bg-gray-700">
         <AppSidebar />
         <SidebarInset className="flex flex-col bg-[#153043]">
-          <header className="sticky top-0 z-50 flex h-16 w-full shrink-0 items-center gap-2 bg-[#153043] px-4 backdrop-blur-sm">
+          <header className="sticky top-0 z-20 flex h-16 w-full shrink-0 items-center gap-2 bg-[#153043] px-4 backdrop-blur-sm">
             <SidebarTrigger className="-ml-1 p-1 text-2xl text-white" />
             <Header />
           </header>
@@ -114,6 +114,14 @@ const router = createBrowserRouter([
         element: (
           <ProtectedRoute allowedRoles={["ROP", "SALESMANAGER", "SUPERADMIN"]}>
             <Status />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "projects",
+        element: (
+          <ProtectedRoute allowedRoles={["ROP", "SALESMANAGER", "SUPERADMIN"]}>
+            <Projects />
           </ProtectedRoute>
         ),
       },

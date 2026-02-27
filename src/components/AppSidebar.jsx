@@ -13,6 +13,9 @@ import {
 import {
   CalendarCheck2,
   CheckCircle,
+  File,
+  FileType2,
+  FolderOpenDot,
   LayoutDashboard,
   Lock,
   LogOut,
@@ -47,6 +50,12 @@ const menuItems = [
     url: "/leadSource",
     icon: Share2,
     roles: ["ROP", "SALESMANAGER", "SUPERADMIN"],
+  },
+  {
+    title: "Projectlar",
+    url: "/projects",
+    icon: FolderOpenDot,
+    roles: ["ROP", "SUPERADMIN"],
   },
   {
     title: "Statuslar",

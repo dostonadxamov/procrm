@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "../components/ui/label";
 import { Button } from "../components/ui/button";
+import { Link } from "react-router-dom";
 
 const API = import.meta.env.VITE_VITE_API_KEY_PROHOME;
 
@@ -320,10 +321,17 @@ export default function LeadSource() {
         {projects.length === 0 ? (
           <>
             <AlertCircle className="h-12 w-12 text-yellow-400" />
-            <p className="text-lg font-semibold">Loyiha topilmadi</p>
+            <p className="text-lg font-semibold text-white">Loyiha topilmadi</p>
             <p className="text-sm text-gray-400">
-              Administrator bilan bog'laning
+              Avval loyha (project) yarating yoki admin bilan bog'laning.
             </p>
+
+            <Link
+              to="/projects"
+              className="rounded-xl border border-blue-400 px-4 py-2 text-blue-400 hover:bg-blue-400 hover:text-white"
+            >
+              Projects
+            </Link>
           </>
         ) : (
           <>

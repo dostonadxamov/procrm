@@ -430,7 +430,7 @@ export default function settings() {
                         <span>Пользователи</span>
                         <span className="text-white">12 / 20</span>
                       </div>
-                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/6">
                         <div
                           className="h-full rounded-full bg-blue-500"
                           style={{ width: "60%" }}
