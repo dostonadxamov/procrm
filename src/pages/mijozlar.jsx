@@ -79,18 +79,26 @@ function applyDrag(statuses, source, destination, draggableId) {
   const srcId = Number(source.droppableId);
   const dstId = Number(destination.droppableId);
 
+  const dragged = statuses
+    .flatMap((s) => s.leads)
+    .find((l) => String(l.id) === draggableId);
+  if (!dragged) return statuses;
+
+  if (srcId === dstId && source.index === destination.index) return statuses;
+
   return statuses.map((status) => {
-    if (status.id === srcId) {
-      // Manbadan leadni olib tashlaymiz
+    if (srcId === dstId && status.id === srcId) {
       const items = status.leads.filter((l) => String(l.id) !== draggableId);
+      items.splice(destination.index, 0, { ...dragged, statusId: dstId });
       return { ...status, leads: items };
     }
+    if (status.id === srcId) {
+      return {
+        ...status,
+        leads: status.leads.filter((l) => String(l.id) !== draggableId),
+      };
+    }
     if (status.id === dstId) {
-      // Maqsadga qo'shamiz
-      const dragged = statuses
-        .flatMap((s) => s.leads)
-        .find((l) => String(l.id) === draggableId);
-      if (!dragged) return status;
       const items = [...status.leads];
       items.splice(destination.index, 0, { ...dragged, statusId: dstId });
       return { ...status, leads: items };
@@ -115,12 +123,12 @@ const EMPTY_FORM = {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function Pipeline() {
   const navigate = useNavigate();
-  const scrollRef = useRef(null);
-  const scrollInterval = useRef(null);
+  const boardRef = useRef(null);
+  const isDragging = useRef(false);
+  const scrollRAF = useRef(null);
 
   const [appState, setAppState] = useState("loading");
   const [projects, setProjects] = useState([]);
-  // statuses ichida har birida .leads array bor
   const [statuses, setStatuses] = useState([]);
   const [leadSource, setLeadSource] = useState([]);
   const [currentProject, setCurrentProject] = useState(null);
@@ -159,7 +167,6 @@ export default function Pipeline() {
           ]);
 
           setProjects(Array.isArray(projectsData) ? projectsData : []);
-          // statusesData ichida har birida leads array bor
           setStatuses(
             statusesData.map((s) => ({
               ...s,
@@ -176,11 +183,8 @@ export default function Pipeline() {
           const data = await res.json();
           const list = Array.isArray(data) ? data : [];
           setProjects(list);
-          if (list.length === 1) {
-            await loadProject(list[0]);
-          } else {
-            setAppState("no-project");
-          }
+          if (list.length === 1) await loadProject(list[0]);
+          else setAppState("no-project");
         }
       } catch (err) {
         console.error("Init xatosi:", err);
@@ -225,7 +229,29 @@ export default function Pipeline() {
     }
   };
 
-  // ── Drag & Drop ───────────────────────────────────────────────────────────
+  // ── Auto-scroll (RAF, faqat horizontal) ───────────────────────────────────
+  const startAutoScroll = () => {
+    const tick = () => {
+      if (!isDragging.current || !boardRef.current) return;
+      const rect = boardRef.current.getBoundingClientRect();
+      const x = window.mouseX || 0;
+      const edge = 160;
+      const speed = 14;
+      if (x > rect.right - edge) boardRef.current.scrollLeft += speed;
+      else if (x < rect.left + edge) boardRef.current.scrollLeft -= speed;
+      scrollRAF.current = requestAnimationFrame(tick);
+    };
+    scrollRAF.current = requestAnimationFrame(tick);
+  };
+
+  const stopAutoScroll = () => {
+    isDragging.current = false;
+    if (scrollRAF.current) {
+      cancelAnimationFrame(scrollRAF.current);
+      scrollRAF.current = null;
+    }
+  };
+
   useEffect(() => {
     const track = (e) => {
       window.mouseX = e.clientX;
@@ -233,29 +259,17 @@ export default function Pipeline() {
     window.addEventListener("mousemove", track);
     return () => {
       window.removeEventListener("mousemove", track);
-      if (scrollInterval.current) clearInterval(scrollInterval.current);
+      stopAutoScroll();
     };
   }, []);
 
-  const handleDragUpdate = () => {
-    if (!scrollRef.current || scrollInterval.current) return;
-    scrollInterval.current = setInterval(() => {
-      const x = window.mouseX || 0;
-      const rect = scrollRef.current.getBoundingClientRect();
-      if (x > rect.right - 180) scrollRef.current.scrollLeft += 18;
-      else if (x < rect.left + 180) scrollRef.current.scrollLeft -= 18;
-    }, 40);
-  };
-
-  const stopScroll = () => {
-    if (scrollInterval.current) {
-      clearInterval(scrollInterval.current);
-      scrollInterval.current = null;
-    }
+  const onDragStart = () => {
+    isDragging.current = true;
+    startAutoScroll();
   };
 
   const onDragEnd = async (result) => {
-    stopScroll();
+    stopAutoScroll();
     const { source, destination, draggableId } = result;
     if (!destination) return;
     if (
@@ -313,7 +327,6 @@ export default function Pipeline() {
       if (!res || !res.ok) throw new Error();
       const newLead = await res.json();
 
-      // Yangi leadni birinchi statusga qo'shamiz
       setStatuses((prev) =>
         prev.map((s, i) =>
           i === 0 ? { ...s, leads: [newLead, ...s.leads] } : s,
@@ -332,11 +345,11 @@ export default function Pipeline() {
   // ── LOADING ───────────────────────────────────────────────────────────────
   if (appState === "loading") {
     return (
-      <div className="flex flex-1 flex-col bg-[#0d1e35]">
-        <div className="sticky top-0 z-10 flex items-center gap-4 border-b border-[#284860] bg-[#0f2231] p-6">
+      <div className="flex h-full flex-col bg-[#0d1e35]">
+        <div className="flex shrink-0 items-center gap-4 border-b border-[#284860] bg-[#0f2231] p-6">
           <Skeleton className="h-10 w-64 rounded-lg" />
         </div>
-        <div className="flex gap-4 overflow-x-auto p-6">
+        <div className="flex flex-1 gap-4 overflow-x-auto p-6">
           {Array(5)
             .fill(0)
             .map((_, i) => (
@@ -353,9 +366,10 @@ export default function Pipeline() {
   // ── NO PROJECT ────────────────────────────────────────────────────────────
   if (appState === "no-project") {
     return (
-      <section className="h-[80vh]">
+      <div className="flex h-full flex-col bg-[#0d1e35]">
         {toast && <Toast {...toast} onClose={() => setToast(null)} />}
-        <div className="sticky top-0 z-10 flex items-center gap-4 border-b border-[#284860] bg-[#0f2231] p-6 text-white">
+
+        <div className="flex shrink-0 items-center gap-4 border-b border-[#284860] bg-[#0f2231] p-6 text-white">
           <Select
             onValueChange={(name) => {
               const p = projects.find((x) => x.name === name);
@@ -375,7 +389,7 @@ export default function Pipeline() {
           </Select>
         </div>
 
-        <div className="flex h-full flex-col items-center justify-center gap-4 bg-[#0d1e35] p-6 text-center">
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
           {projects.length === 0 ? (
             <>
               <AlertCircle className="h-12 w-12 text-yellow-400" />
@@ -383,9 +397,8 @@ export default function Pipeline() {
                 Loyiha topilmadi
               </p>
               <p className="text-sm text-gray-400">
-                Avval loyha (project) yarating yoki admin bilan bog'laning.
+                Avval loyiha (project) yarating yoki admin bilan bog'laning.
               </p>
-
               <Link
                 to="/projects"
                 className="rounded-xl border border-blue-400 px-4 py-2 text-blue-400 hover:bg-blue-400 hover:text-white"
@@ -413,17 +426,18 @@ export default function Pipeline() {
             </>
           )}
         </div>
-      </section>
+      </div>
     );
   }
 
   // ── READY ─────────────────────────────────────────────────────────────────
   return (
-    <>
+    // Pipeline butun bo'sh joyni egallaydi — sidebar layout parent da hal qilingan
+    <div className="flex h-full flex-col overflow-hidden bg-[#0d1e35]">
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}
 
-      {/* Header */}
-      <div className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-[#284860] bg-[#0f2231] p-6 text-white">
+      {/* ── Header — sticky, scroll bilan harakatlanmaydi ── */}
+      <div className="flex shrink-0 items-center justify-between gap-4 border-b border-[#284860] bg-[#0f2231] px-6 py-4 text-white">
         <Select
           value={currentProject?.name}
           onValueChange={(name) => {
@@ -443,286 +457,320 @@ export default function Pipeline() {
           </SelectContent>
         </Select>
 
-        {/* Add Lead Sheet */}
-        <Sheet
-          open={sheetOpen}
-          onOpenChange={(o) => {
-            setSheetOpen(o);
-            if (!o) setFormData(EMPTY_FORM);
-          }}
-        >
-          <SheetTrigger asChild>
-            <button className="flex gap-2 rounded-md border px-3 py-1 hover:bg-[#1b3e57]">
-              <Plus className="w-5" /> Add
-            </button>
-          </SheetTrigger>
-          <SheetContent className="overflow-y-auto bg-[#07131d] px-5">
-            <SheetHeader>
-              <SheetTitle className="text-white">Lead qo'shish</SheetTitle>
-            </SheetHeader>
-            <form className="mt-4 w-full text-white" onSubmit={handleSubmit}>
-              <FieldGroup>
-                <div className="grid grid-cols-2 gap-4">
+        <div className="flex items-center gap-5">
+          <Link
+            className="flex items-center gap-2 rounded-md border border-[#2a4868] px-3 py-1.5 text-sm hover:bg-[#1b3e57]"
+            to="/status"
+          >
+            Statuslar
+          </Link>
+
+          <Sheet
+            open={sheetOpen}
+            onOpenChange={(o) => {
+              setSheetOpen(o);
+              if (!o) setFormData(EMPTY_FORM);
+            }}
+          >
+            <SheetTrigger asChild>
+              <button className="flex items-center gap-2 rounded-md border border-[#2a4868] px-3 py-1.5 text-sm hover:bg-[#1b3e57]">
+                <Plus className="h-4 w-4" /> Yangi mijoz
+              </button>
+            </SheetTrigger>
+            <SheetContent className="overflow-y-auto bg-[#07131d] px-5">
+              <SheetHeader>
+                <SheetTitle className="text-white">Lead qo'shish</SheetTitle>
+              </SheetHeader>
+              <form className="mt-4 w-full text-white" onSubmit={handleSubmit}>
+                <FieldGroup>
+                  <div className="grid grid-cols-2 gap-4">
+                    <Field>
+                      <FieldLabel>Ism *</FieldLabel>
+                      <Input
+                        name="firstName"
+                        value={formData.firstName}
+                        onChange={handleChange}
+                        placeholder="Ism"
+                        required
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel>Familiya</FieldLabel>
+                      <Input
+                        name="lastName"
+                        value={formData.lastName}
+                        onChange={handleChange}
+                        placeholder="Familiya"
+                      />
+                    </Field>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <Field>
+                      <FieldLabel>Telefon *</FieldLabel>
+                      <Input
+                        type="tel"
+                        name="phone"
+                        value={formData.phone}
+                        onChange={handleChange}
+                        placeholder="+998 __ ___ __ __"
+                        required
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel>Qo'shimcha</FieldLabel>
+                      <Input
+                        type="tel"
+                        name="extraPhone"
+                        value={formData.extraPhone}
+                        onChange={handleChange}
+                        placeholder="+998 __ ___ __ __"
+                      />
+                    </Field>
+                  </div>
                   <Field>
-                    <FieldLabel>Ism *</FieldLabel>
+                    <FieldLabel>Tug'ilgan sana</FieldLabel>
                     <Input
-                      name="firstName"
-                      value={formData.firstName}
+                      type="date"
+                      name="birthDate"
+                      value={formData.birthDate}
                       onChange={handleChange}
-                      placeholder="Ism"
-                      required
+                      max={maxBirthDate}
                     />
+                    <p className="mt-0.5 text-[11px] text-gray-500">
+                      18 yoshdan katta (max: {maxBirthDate.slice(0, 4)}-yil)
+                    </p>
                   </Field>
                   <Field>
-                    <FieldLabel>Familiya</FieldLabel>
+                    <FieldLabel>Manzil</FieldLabel>
                     <Input
-                      name="lastName"
-                      value={formData.lastName}
+                      name="adress"
+                      value={formData.adress}
                       onChange={handleChange}
-                      placeholder="Familiya"
+                      placeholder="Manzil"
                     />
                   </Field>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <Field>
+                      <FieldLabel>Budjet</FieldLabel>
+                      <Input
+                        type="number"
+                        name="budjet"
+                        value={formData.budjet}
+                        onChange={handleChange}
+                        placeholder="so'm"
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel>Manba</FieldLabel>
+                      <Select
+                        value={
+                          formData.leadSourceId
+                            ? String(formData.leadSourceId)
+                            : ""
+                        }
+                        onValueChange={(v) =>
+                          setFormData((p) => ({
+                            ...p,
+                            leadSourceId: parseInt(v),
+                          }))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Tanlang..." />
+                        </SelectTrigger>
+                        <SelectContent className="mt-10">
+                          {leadSource.map((d) => (
+                            <SelectItem key={d.id} value={String(d.id)}>
+                              {d.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                  </div>
                   <Field>
-                    <FieldLabel>Telefon *</FieldLabel>
+                    <FieldLabel>Teg</FieldLabel>
                     <Input
-                      type="tel"
-                      name="phone"
-                      value={formData.phone}
+                      name="tag"
+                      value={formData.tag}
                       onChange={handleChange}
-                      placeholder="+998 __ ___ __ __"
-                      required
+                      placeholder="Masalan: VIP, comfort, business..."
                     />
                   </Field>
-                  <Field>
-                    <FieldLabel>Qo'shimcha</FieldLabel>
-                    <Input
-                      type="tel"
-                      name="extraPhone"
-                      value={formData.extraPhone}
-                      onChange={handleChange}
-                      placeholder="+998 __ ___ __ __"
-                    />
-                  </Field>
-                </div>
-                <Field>
-                  <FieldLabel>Tug'ilgan sana</FieldLabel>
-                  <Input
-                    type="date"
-                    name="birthDate"
-                    value={formData.birthDate}
-                    onChange={handleChange}
-                    max={maxBirthDate}
-                  />
-                  <p className="mt-0.5 text-[11px] text-gray-500">
-                    18 yoshdan katta bo'lishi shart (max:{" "}
-                    {maxBirthDate.slice(0, 4)}-yil)
-                  </p>
-                </Field>
-                <Field>
-                  <FieldLabel>Manzil</FieldLabel>
-                  <Input
-                    name="adress"
-                    value={formData.adress}
-                    onChange={handleChange}
-                    placeholder="Manzil"
-                  />
-                </Field>
-                <div className="grid grid-cols-2 gap-4">
-                  <Field>
-                    <FieldLabel>Budjet</FieldLabel>
-                    <Input
-                      type="number"
-                      name="budjet"
-                      value={formData.budjet}
-                      onChange={handleChange}
-                      placeholder="so'm"
-                    />
-                  </Field>
-                  <Field>
-                    <FieldLabel>Manba</FieldLabel>
-                    <Select
-                      value={
-                        formData.leadSourceId
-                          ? String(formData.leadSourceId)
-                          : ""
-                      }
-                      onValueChange={(v) =>
-                        setFormData((p) => ({
-                          ...p,
-                          leadSourceId: parseInt(v),
-                        }))
-                      }
+                  <Field orientation="horizontal" className="mt-4">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="text-[#07131d]"
+                      onClick={() => setSheetOpen(false)}
                     >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Tanlang..." />
-                      </SelectTrigger>
-                      <SelectContent className="mt-10">
-                        {leadSource.map((d) => (
-                          <SelectItem key={d.id} value={String(d.id)}>
-                            {d.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      Bekor
+                    </Button>
+                    <Button
+                      type="submit"
+                      className="border bg-[#07131d]"
+                      disabled={submitting}
+                    >
+                      {submitting ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        "Saqlash"
+                      )}
+                    </Button>
                   </Field>
-                </div>
-                <Field>
-                  <FieldLabel>Teg</FieldLabel>
-                  <Input
-                    name="tag"
-                    value={formData.tag}
-                    onChange={handleChange}
-                    placeholder="Masalan: VIP, comfort, business..."
-                  />
-                </Field>
-                <Field orientation="horizontal" className="mt-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="text-[#07131d]"
-                    onClick={() => setSheetOpen(false)}
-                  >
-                    Bekor
-                  </Button>
-                  <Button
-                    type="submit"
-                    className="border bg-[#07131d]"
-                    disabled={submitting}
-                  >
-                    {submitting ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      "Saqlash"
-                    )}
-                  </Button>
-                </Field>
-              </FieldGroup>
-            </form>
-          </SheetContent>
-        </Sheet>
+                </FieldGroup>
+              </form>
+            </SheetContent>
+          </Sheet>
+        </div>
       </div>
 
-      {/* Kanban board */}
-      <DragDropContext onDragEnd={onDragEnd} onDragUpdate={handleDragUpdate}>
+      {/* ── Kanban board ──
+          flex-1 + overflow-x-auto: sidebar layout parent da, Pipeline ichida
+          hech qanday fixed/absolute yo'q — nested scroll muammosi yo'q
+      ── */}
+      <DragDropContext onDragStart={onDragStart} onDragEnd={onDragEnd}>
         <div
-          ref={scrollRef}
-          className="fixed top-37.5 right-0 bottom-0 left-64 overflow-x-auto overflow-y-hidden bg-[#0d1e35]"
-          style={{ scrollBehavior: "auto" }}
+          ref={boardRef}
+          className="flex flex-1 gap-4 overflow-x-auto overflow-y-hidden p-6"
+          style={{ alignItems: "flex-start" }}
         >
-          <div
-            className="flex h-full gap-4 p-6"
-            style={{ minWidth: "max-content" }}
-          >
-            {statuses.map((col) => (
-              <div key={col.id} className="flex h-full w-80 shrink-0 flex-col">
-                <div
-                  className="mb-3 overflow-hidden rounded-lg border-b-4 bg-[#11263a] shadow-sm"
-                  style={{ borderBottomColor: col.color || "#6b7280" }}
-                >
-                  <div className="flex items-center justify-between bg-[#153043] px-4 py-3 font-semibold text-white">
-                    <span className="truncate">{col.name}</span>
-                    <span className="rounded-full bg-gray-700 px-2.5 py-1 text-xs">
-                      {col.leads.length}
-                    </span>
-                  </div>
+          {statuses.map((col) => (
+            <div
+              key={col.id}
+              className="flex shrink-0 flex-col"
+              style={{ width: 300 }}
+            >
+              {/* Column header */}
+              <div
+                className="mb-3 overflow-hidden rounded-lg border-b-4 bg-[#11263a]"
+                style={{ borderBottomColor: col.color || "#6b7280" }}
+              >
+                <div className="flex items-center justify-between bg-[#153043] px-4 py-3 font-semibold text-white">
+                  <span className="truncate text-sm">{col.name}</span>
+                  <span className="rounded-full bg-gray-700 px-2.5 py-0.5 text-xs">
+                    {col.leads.length}
+                  </span>
                 </div>
+              </div>
 
-                <Droppable droppableId={String(col.id)}>
-                  {(provided, snapshot) => (
+              {/* Droppable — overflow visible (nested scroll yo'q) */}
+              <Droppable
+                droppableId={String(col.id)}
+                mode="standard"
+                renderClone={(provided, _snap, rubric) => {
+                  const lead = col.leads[rubric.source.index];
+                  return (
                     <div
-                      {...provided.droppableProps}
                       ref={provided.innerRef}
-                      className={`flex flex-1 flex-col gap-2.5 overflow-y-auto rounded-lg p-2 transition-colors duration-150 ${
-                        snapshot.isDraggingOver ? "bg-[#1a3552]/60" : ""
-                      }`}
+                      {...provided.draggableProps}
+                      {...provided.dragHandleProps}
+                      className="rounded-lg border border-blue-400/50 bg-[#1a3552] p-3 text-sm text-white shadow-2xl ring-2 ring-blue-500/30"
                       style={{
-                        scrollbarWidth: "thin",
-                        scrollbarColor: "#2a4868 transparent",
+                        ...provided.draggableProps.style,
+                        opacity: 1,
+                        width: 300,
                       }}
                     >
-                      {col.leads.length === 0 ? (
-                        <div
-                          className={`rounded-lg border-2 border-dashed p-6 text-center text-xs transition-colors duration-150 ${
-                            snapshot.isDraggingOver
-                              ? "border-blue-400/60 bg-blue-900/10 text-blue-400"
-                              : "border-[#2a4868]/40 text-gray-500"
-                          }`}
-                        >
-                          {snapshot.isDraggingOver
-                            ? "Bu yerga tashlang"
-                            : "Bo'sh"}
-                        </div>
-                      ) : (
-                        col.leads.map((lead, index) => (
-                          <Draggable
-                            key={lead.id}
-                            draggableId={String(lead.id)}
-                            index={index}
-                          >
-                            {(provided, snapshot) => (
-                              <div
-                                ref={provided.innerRef}
-                                {...provided.draggableProps}
-                                {...provided.dragHandleProps}
-                                onClick={() =>
-                                  !snapshot.isDragging &&
-                                  navigate(`/leadDetails?leadId=${lead.id}`)
-                                }
-                                className={`cursor-pointer rounded-lg border border-[#2a4868]/30 bg-[#1a3552] p-3 text-sm text-white shadow-sm transition-all duration-150 hover:bg-[#21446a] ${
-                                  snapshot.isDragging
-                                    ? "scale-[1.03] rotate-1 border-blue-400/50 shadow-xl ring-2 shadow-black/40 ring-blue-500/30"
-                                    : ""
-                                }`}
-                                style={{
-                                  ...provided.draggableProps.style,
-                                  opacity: 1,
-                                }}
-                              >
-                                <div className="font-medium">
-                                  {lead.firstName} {lead.lastName}
-                                </div>
-                                <div className="mt-1 text-xs opacity-60">
-                                  {lead.phone}
-                                </div>
-                                <div className="mt-2 flex items-center justify-between gap-2">
-                                  {lead.budjet > 0 && (
-                                    <div className="mt-1 text-xs text-green-400">
-                                      {lead.budjet.toLocaleString()} so'm
-                                    </div>
-                                  )}
-                                  {lead.taskRemainingDays != null && (
-                                    <div className="mt-1 flex items-center gap-1 text-xs">
-                                      <span
-                                        className={
-                                          String(
-                                            lead.taskRemainingDays,
-                                          ).startsWith("-")
-                                            ? "text-red-400"
-                                            : "text-green-400"
-                                        }
-                                      >
-                                        {lead.taskRemainingDays}
-                                      </span>
-                                      <CalendarCheck2 className="h-3 w-3" />
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-                          </Draggable>
-                        ))
-                      )}
-                      {provided.placeholder}
+                      <div className="font-medium">
+                        {lead?.firstName} {lead?.lastName}
+                      </div>
+                      <div className="mt-1 text-xs opacity-60">
+                        {lead?.phone}
+                      </div>
                     </div>
-                  )}
-                </Droppable>
-              </div>
-            ))}
-          </div>
+                  );
+                }}
+              >
+                {(provided, snapshot) => (
+                  <div
+                    {...provided.droppableProps}
+                    ref={provided.innerRef}
+                    className={`flex flex-col gap-2.5 rounded-lg p-2 transition-colors duration-150 ${
+                      snapshot.isDraggingOver ? "bg-[#1a3552]/60" : ""
+                    }`}
+                    style={{ minHeight: 80, overflow: "visible" }}
+                  >
+                    {col.leads.length === 0 ? (
+                      <div
+                        className={`rounded-lg border-2 border-dashed p-6 text-center text-xs transition-colors ${
+                          snapshot.isDraggingOver
+                            ? "border-blue-400/60 bg-blue-900/10 text-blue-400"
+                            : "border-[#2a4868]/40 text-gray-500"
+                        }`}
+                      >
+                        {snapshot.isDraggingOver
+                          ? "Bu yerga tashlang"
+                          : "Bo'sh"}
+                      </div>
+                    ) : (
+                      col.leads.map((lead, index) => (
+                        <Draggable
+                          key={lead.id}
+                          draggableId={String(lead.id)}
+                          index={index}
+                        >
+                          {(provided, snapshot) => (
+                            <div
+                              ref={provided.innerRef}
+                              {...provided.draggableProps}
+                              {...provided.dragHandleProps}
+                              onClick={() =>
+                                !snapshot.isDragging &&
+                                navigate(`/leadDetails?leadId=${lead.id}`)
+                              }
+                              className={`cursor-pointer rounded-lg border border-[#2a4868]/30 bg-[#1a3552] p-3 text-sm text-white shadow-sm transition-all duration-150 hover:bg-[#21446a] ${
+                                snapshot.isDragging
+                                  ? "scale-[1.03] rotate-1 border-blue-400/50 shadow-xl ring-2 shadow-black/40 ring-blue-500/30"
+                                  : ""
+                              }`}
+                              style={{
+                                ...provided.draggableProps.style,
+                                opacity: 1,
+                              }}
+                            >
+                              <div className="font-medium">
+                                {lead.firstName} {lead.lastName}
+                              </div>
+                              <div className="mt-1 text-xs opacity-60">
+                                {lead.phone}
+                              </div>
+                              <div className="mt-2 flex items-center justify-between gap-2">
+                                {lead.budjet > 0 && (
+                                  <div className="text-xs text-green-400">
+                                    {lead.budjet.toLocaleString()} so'm
+                                  </div>
+                                )}
+                                {lead.taskRemainingDays != null && (
+                                  <div className="flex items-center gap-1 text-xs">
+                                    <span
+                                      className={
+                                        String(
+                                          lead.taskRemainingDays,
+                                        ).startsWith("-")
+                                          ? "text-red-400"
+                                          : "text-green-400"
+                                      }
+                                    >
+                                      {lead.taskRemainingDays}
+                                    </span>
+                                    <CalendarCheck2 className="h-3 w-3" />
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </Draggable>
+                      ))
+                    )}
+                    {provided.placeholder}
+                  </div>
+                )}
+              </Droppable>
+            </div>
+          ))}
         </div>
       </DragDropContext>
-    </>
+    </div>
   );
 }

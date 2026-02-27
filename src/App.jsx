@@ -19,6 +19,7 @@ import {
   SidebarTrigger,
   SidebarInset,
 } from "@/components/ui/sidebar";
+import SmsRassilka from "./pages/smsRassilka";
 
 // 403 sahifasi
 function Forbidden() {
@@ -148,6 +149,14 @@ const router = createBrowserRouter([
         element: (
           <ProtectedRoute allowedRoles={["ROP", "SUPERADMIN"]}>
             <Projects />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "rassilka",
+        element: (
+          <ProtectedRoute allowedRoles={["ROP", "SUPERADMIN"]}>
+            <SmsRassilka />
           </ProtectedRoute>
         ),
       },

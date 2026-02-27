@@ -15,6 +15,10 @@ import {
   Clock,
   CheckCircle2,
   AlertCircle,
+  Pencil,
+  X,
+  Check,
+  Trash2,
 } from "lucide-react";
 import {
   Select,
@@ -32,9 +36,7 @@ import { toast } from "sonner";
 
 const API = import.meta.env.VITE_VITE_API_KEY_PROHOME;
 
-// ─────────────────────────────────────────────────────────────────────────
-// HELPERS
-// ─────────────────────────────────────────────────────────────────────────
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
 const formatCurrency = (amount) =>
   new Intl.NumberFormat("uz-UZ").format(amount) + " so'm";
 
@@ -66,15 +68,14 @@ const formatMonthYear = (dateString) => {
   });
 };
 
-// Task muddati o'tganmi yoki yaqinmi?
 const getTaskStatus = (taskDate) => {
   if (!taskDate) return null;
   const now = new Date();
   const due = new Date(taskDate);
   const diffMs = due - now;
   const diffH = diffMs / (1000 * 60 * 60);
-  if (diffMs < 0) return "overdue"; // o'tib ketgan
-  if (diffH < 24) return "soon"; // 24 soat qolgan
+  if (diffMs < 0) return "overdue";
+  if (diffH < 24) return "soon";
   return "ok";
 };
 
@@ -84,9 +85,7 @@ const maxBirthDate = (() => {
   return d.toISOString().slice(0, 10);
 })();
 
-// ─────────────────────────────────────────────────────────────────────────
-// EVENT CONFIG
-// ─────────────────────────────────────────────────────────────────────────
+// ─── EVENT CONFIG ─────────────────────────────────────────────────────────────
 const EVENT_CFG = {
   Description: { icon: MessageCircle, color: "#3b82f6", label: "Izoh" },
   tasks: { icon: CheckSquare, color: "#10b981", label: "Task" },
@@ -117,39 +116,118 @@ const INPUT_TYPES = [
   },
 ];
 
-// ─────────────────────────────────────────────────────────────────────────
-// EVENT CARD  ← asosiy o'zgarish
-// ─────────────────────────────────────────────────────────────────────────
-function EventCard({ event }) {
+const TASK_STATUS_OPTIONS = [
+  { value: "STARTED", label: "Jarayonda", color: "#f59e0b" },
+  { value: "CANCELED", label: "Kutilmoqda", color: "#6b7280" },
+  { value: "FINISHED", label: "Bajarildi", color: "#10b981" },
+];
+
+// ─── EVENT CARD ───────────────────────────────────────────────────────────────
+function EventCard({ event, headers, onRefresh }) {
   const cfg = getCfg(event.type);
   const Icon = cfg.icon;
   const isTask = event.type === "tasks";
-  const taskStatus = isTask ? getTaskStatus(event.taskDate) : null;
+  const isDesc = event.type === "Description";
 
-  const taskStatusCfg = {
-    overdue: {
-      color: "#ef4444",
-      bg: "rgba(239,68,68,0.1)",
-      border: "rgba(239,68,68,0.2)",
-      icon: AlertCircle,
-      label: "Muddati o'tgan",
-    },
-    soon: {
+  // ── edit state ──
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState(
+    event.text || event.description || "",
+  );
+  const [editDate, setEditDate] = useState(event.taskDate || "");
+  const [editStatus, setEditStatus] = useState(event.status || "STARTED");
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const STATUS_MAP = {
+    STARTED: {
       color: "#f59e0b",
       bg: "rgba(245,158,11,0.1)",
       border: "rgba(245,158,11,0.2)",
       icon: Clock,
-      label: "Yaqinlashmoqda",
+      label: "Jarayonda",
     },
-    ok: {
+    CANCELED: {
+      color: "#6b7280",
+      bg: "rgba(107,114,128,0.1)",
+      border: "rgba(107,114,128,0.2)",
+      icon: AlertCircle,
+      label: "Bekor qilingan",
+    },
+    FINISHED: {
       color: "#10b981",
       bg: "rgba(16,185,129,0.08)",
       border: "rgba(16,185,129,0.18)",
       icon: CheckCircle2,
-      label: "Rejalashtirilgan",
+      label: "Bajarildi",
     },
   };
-  const tsCfg = taskStatus ? taskStatusCfg[taskStatus] : null;
+  const tsCfg = isTask ? STATUS_MAP[event.status] || STATUS_MAP.CANCELED : null;
+
+  // ── PATCH task ──
+  const handleSaveTask = async () => {
+    if (!editText.trim()) return;
+    setSaving(true);
+    try {
+      const body = { description: editText.trim(), status: editStatus };
+      if (editDate) body.taskDate = editDate;
+      const res = await fetch(`${API}/tasks/${event.id}`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error();
+      toast.success("Task yangilandi ✅");
+      setEditing(false);
+      await onRefresh();
+    } catch {
+      toast.error("Xatolik ❌");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ── PATCH description ──
+  const handleSaveDesc = async () => {
+    if (!editText.trim()) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`${API}/Description/${event.id}`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ text: editText.trim() }),
+      });
+      if (!res.ok) throw new Error();
+      toast.success("Izoh yangilandi ✅");
+      setEditing(false);
+      await onRefresh();
+    } catch {
+      toast.error("Xatolik ❌");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ── DELETE ──
+  const handleDelete = async () => {
+    if (!window.confirm("O'chirilsinmi?")) return;
+    setDeleting(true);
+    try {
+      const url = isTask
+        ? `${API}/tasks/${event.id}`
+        : `${API}/Description/${event.id}`;
+      const res = await fetch(url, { method: "DELETE", headers });
+      if (!res.ok) throw new Error();
+      toast.success("O'chirildi ✅");
+      await onRefresh();
+    } catch {
+      toast.error("O'chirishda xato ❌");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleSave = isTask ? handleSaveTask : handleSaveDesc;
 
   return (
     <div className="group flex gap-3">
@@ -180,18 +258,15 @@ function EventCard({ event }) {
           borderLeft: `2px solid ${cfg.color}35`,
         }}
       >
-        {/* Header row */}
+        {/* Header */}
         <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            {/* Type badge */}
             <span
               className="rounded-md px-2 py-0.5 text-[10px] font-bold tracking-wider uppercase"
               style={{ color: cfg.color, background: `${cfg.color}15` }}
             >
               {cfg.label}
             </span>
-
-            {/* Task status badge */}
             {isTask && tsCfg && (
               <span
                 className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold"
@@ -205,75 +280,151 @@ function EventCard({ event }) {
                 {tsCfg.label}
               </span>
             )}
-
-            {event.user?.role && (
-              <span className="text-xs text-gray-600">{event.user.role}</span>
-            )}
           </div>
 
-          {/* Created time */}
-          <div className="flex items-center gap-1 text-[11px] text-gray-600">
-            <Clock size={10} />
-            {formatDateTime(event.createdAt)}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 text-[11px] text-gray-600">
+              <Clock size={10} />
+              {formatDateTime(event.createdAt)}
+            </div>
+
+            {/* Action buttons — hover da ko'rinadi */}
+            {!editing && (
+              <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                <button
+                  onClick={() => {
+                    setEditing(true);
+                    setEditText(event.text || event.description || "");
+                  }}
+                  className="flex h-6 w-6 items-center justify-center rounded-lg text-gray-600 transition-colors hover:bg-white/10 hover:text-blue-400"
+                  title="Tahrirlash"
+                >
+                  <Pencil size={11} />
+                </button>
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="flex h-6 w-6 items-center justify-center rounded-lg text-gray-600 transition-colors hover:bg-white/10 hover:text-red-400 disabled:opacity-40"
+                  title="O'chirish"
+                >
+                  <Trash2 size={11} />
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Text */}
-        <p className="text-sm leading-relaxed text-gray-300">
-          {event.text || event.description}
-        </p>
+        {/* ── View mode ── */}
+        {!editing && (
+          <>
+            <p className="text-sm leading-relaxed text-gray-300">
+              {event.text || event.description}
+            </p>
 
-        {/* ── Task footer: muddat + tegli ko'rinish ── */}
-        {isTask && (
-          <div
-            className="mt-3 flex items-center justify-between gap-3 rounded-lg px-3 py-2.5"
-            style={{
-              background: tsCfg ? tsCfg.bg : "rgba(16,185,129,0.06)",
-              border: `1px solid ${tsCfg ? tsCfg.border : "rgba(16,185,129,0.15)"}`,
-            }}
-          >
-            <div className="flex items-center gap-2">
-              <Calendar
-                size={13}
-                style={{ color: tsCfg ? tsCfg.color : "#10b981" }}
-              />
-              <span
-                className="text-xs font-medium"
-                style={{ color: tsCfg ? tsCfg.color : "#10b981" }}
-              >
-                Muddat:
-              </span>
-              <span className="text-xs font-bold text-white">
-                {event.taskDate
-                  ? formatDateTime(event.taskDate)
-                  : "Belgilanmagan"}
-              </span>
-            </div>
-            {tsCfg && (
-              <tsCfg.icon
-                size={14}
-                style={{ color: tsCfg.color, flexShrink: 0 }}
-              />
-            )}
-          </div>
-        )}
-
-        {/* ── Description footer: tegli ko'rinish ── */}
-        {!isTask && event.tags && event.tags.length > 0 && (
-          <div className="mt-2.5 flex flex-wrap gap-1.5">
-            {event.tags.map((tag, i) => (
-              <span
-                key={i}
-                className="rounded-md px-2 py-0.5 text-[10px] font-medium"
+            {isTask && (
+              <div
+                className="mt-3 flex items-center justify-between gap-3 rounded-lg px-3 py-2.5"
                 style={{
-                  background: "rgba(59,130,246,0.1)",
-                  color: "#60a5fa",
-                  border: "1px solid rgba(59,130,246,0.2)",
+                  background: tsCfg ? tsCfg.bg : "rgba(16,185,129,0.06)",
+                  border: `1px solid ${tsCfg ? tsCfg.border : "rgba(16,185,129,0.15)"}`,
                 }}
               >
-                #{tag}
-              </span>
-            ))}
+                <div className="flex items-center gap-2">
+                  <Calendar
+                    size={13}
+                    style={{ color: tsCfg ? tsCfg.color : "#10b981" }}
+                  />
+                  <span
+                    className="text-xs font-medium"
+                    style={{ color: tsCfg ? tsCfg.color : "#10b981" }}
+                  >
+                    Muddat:
+                  </span>
+                  <span className="text-xs font-bold text-white">
+                    {event.taskDate
+                      ? formatDateTime(event.taskDate)
+                      : "Belgilanmagan"}
+                  </span>
+                </div>
+                {tsCfg && (
+                  <tsCfg.icon
+                    size={14}
+                    style={{ color: tsCfg.color, flexShrink: 0 }}
+                  />
+                )}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ── Edit mode ── */}
+        {editing && (
+          <div className="space-y-2.5">
+            <textarea
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+              rows={3}
+              className="w-full resize-none rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-gray-600 outline-none focus:border-blue-500/50"
+              placeholder={isTask ? "Vazifa matni..." : "Izoh matni..."}
+              autoFocus
+            />
+
+            {isTask && (
+              <div className="flex flex-wrap gap-2">
+                {/* Status select */}
+                <div className="flex items-center gap-1.5">
+                  {TASK_STATUS_OPTIONS.map((s) => (
+                    <button
+                      key={s.value}
+                      onClick={() => setEditStatus(s.value)}
+                      className="rounded-md px-2.5 py-1 text-[11px] font-semibold transition-all"
+                      style={{
+                        color: editStatus === s.value ? s.color : "#4b5563",
+                        background:
+                          editStatus === s.value
+                            ? `${s.color}18`
+                            : "rgba(255,255,255,0.04)",
+                        border: `1px solid ${editStatus === s.value ? `${s.color}35` : "transparent"}`,
+                      }}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Date input */}
+                <input
+                  type="datetime-local"
+                  value={editDate ? editDate.slice(0, 16) : ""}
+                  onChange={(e) => setEditDate(e.target.value)}
+                  className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] text-gray-300 outline-none focus:border-green-500/40"
+                  style={{ colorScheme: "dark" }}
+                />
+              </div>
+            )}
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleSave}
+                disabled={saving || !editText.trim()}
+                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all disabled:opacity-40"
+                style={{ background: "#10b981", color: "#fff" }}
+              >
+                {saving ? (
+                  <div className="h-3 w-3 animate-spin rounded-full border border-white/30 border-t-white" />
+                ) : (
+                  <Check size={12} />
+                )}
+                Saqlash
+              </button>
+              <button
+                onClick={() => setEditing(false)}
+                className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-gray-500 transition-colors hover:text-white"
+              >
+                <X size={12} />
+                Bekor
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -281,17 +432,12 @@ function EventCard({ event }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// INPUT BAR
-// ─────────────────────────────────────────────────────────────────────────
-// ─── Inline 24h DateTimePicker ───────────────────────────────────────────────
+// ─── DATETIME PICKER ──────────────────────────────────────────────────────────
 function TaskDatePicker({ value, onChange }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
-
   const parsed = value ? new Date(value) : null;
   const today = new Date();
-
   const [viewYear, setViewYear] = useState(
     parsed ? parsed.getFullYear() : today.getFullYear(),
   );
@@ -347,7 +493,6 @@ function TaskDatePicker({ value, onChange }) {
 
   const confirm = () => {
     if (!selDay) return;
-    // "2025-06-15T14:30:00" — ISO 8601 local, backend new Date() bilan parse qiladi
     const iso = `${viewYear}-${pad(viewMonth + 1)}-${pad(selDay)}T${pad(hour)}:${pad(minute)}:00`;
     onChange(iso);
     setOpen(false);
@@ -400,7 +545,6 @@ function TaskDatePicker({ value, onChange }) {
             border: "1px solid rgba(255,255,255,0.08)",
           }}
         >
-          {/* Month nav */}
           <div className="flex items-center justify-between border-b border-white/[0.05] px-3 py-2">
             <button
               type="button"
@@ -420,8 +564,6 @@ function TaskDatePicker({ value, onChange }) {
               ›
             </button>
           </div>
-
-          {/* Weekdays */}
           <div className="grid grid-cols-7 px-2 pt-2">
             {WDAYS.map((d) => (
               <div
@@ -432,8 +574,6 @@ function TaskDatePicker({ value, onChange }) {
               </div>
             ))}
           </div>
-
-          {/* Days */}
           <div className="grid grid-cols-7 gap-y-0.5 px-2 pb-2">
             {Array(firstDay)
               .fill(null)
@@ -480,51 +620,33 @@ function TaskDatePicker({ value, onChange }) {
               );
             })}
           </div>
-
-          {/* 24h time sliders */}
           <div className="space-y-2.5 border-t border-white/[0.05] px-3 py-3">
-            <div className="flex items-center gap-2">
-              <span className="w-12 shrink-0 text-right text-[10px] text-gray-600">
-                Soat
-              </span>
-              <input
-                type="range"
-                min={0}
-                max={23}
-                value={hour}
-                onChange={(e) => setHour(+e.target.value)}
-                className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full"
-                style={{
-                  accentColor: "#10b981",
-                  background: `linear-gradient(to right,#10b981 ${(hour / 23) * 100}%,#162840 ${(hour / 23) * 100}%)`,
-                }}
-              />
-              <span className="w-7 shrink-0 text-xs font-bold text-white tabular-nums">
-                {pad(hour)}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-12 shrink-0 text-right text-[10px] text-gray-600">
-                Daqiqa
-              </span>
-              <input
-                type="range"
-                min={0}
-                max={59}
-                step={5}
-                value={minute}
-                onChange={(e) => setMinute(+e.target.value)}
-                className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full"
-                style={{
-                  accentColor: "#10b981",
-                  background: `linear-gradient(to right,#10b981 ${(minute / 59) * 100}%,#162840 ${(minute / 59) * 100}%)`,
-                }}
-              />
-              <span className="w-7 shrink-0 text-xs font-bold text-white tabular-nums">
-                {pad(minute)}
-              </span>
-            </div>
-            {/* Quick time buttons */}
+            {[
+              ["Soat", hour, setHour, 23],
+              ["Daqiqa", minute, setMinute, 59],
+            ].map(([label, val, setter, max]) => (
+              <div key={label} className="flex items-center gap-2">
+                <span className="w-12 shrink-0 text-right text-[10px] text-gray-600">
+                  {label}
+                </span>
+                <input
+                  type="range"
+                  min={0}
+                  max={max}
+                  step={label === "Daqiqa" ? 5 : 1}
+                  value={val}
+                  onChange={(e) => setter(+e.target.value)}
+                  className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full"
+                  style={{
+                    accentColor: "#10b981",
+                    background: `linear-gradient(to right,#10b981 ${(val / max) * 100}%,#162840 ${(val / max) * 100}%)`,
+                  }}
+                />
+                <span className="w-7 shrink-0 text-xs font-bold text-white tabular-nums">
+                  {pad(val)}
+                </span>
+              </div>
+            ))}
             <div className="flex flex-wrap gap-1 pt-0.5">
               {[
                 [9, 0],
@@ -556,8 +678,6 @@ function TaskDatePicker({ value, onChange }) {
               ))}
             </div>
           </div>
-
-          {/* Confirm footer */}
           <div
             className="flex items-center justify-between border-t border-white/[0.05] px-3 py-2"
             style={{ background: "rgba(255,255,255,0.02)" }}
@@ -587,7 +707,7 @@ function TaskDatePicker({ value, onChange }) {
   );
 }
 
-// ─── InputBar ─────────────────────────────────────────────────────────────────
+// ─── INPUT BAR ────────────────────────────────────────────────────────────────
 function InputBar({ onSubmit, sending }) {
   const [text, setText] = useState("");
   const [type, setType] = useState(INPUT_TYPES[0]);
@@ -627,7 +747,6 @@ function InputBar({ onSubmit, sending }) {
       }}
     >
       <div className="mx-auto max-w-3xl space-y-2.5">
-        {/* Type tabs + date picker */}
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1.5">
             {INPUT_TYPES.map((t) => {
@@ -656,14 +775,10 @@ function InputBar({ onSubmit, sending }) {
               );
             })}
           </div>
-
-          {/* Custom 24h picker — faqat task tanlanganda */}
           {isTask && <TaskDatePicker value={taskDate} onChange={setTaskDate} />}
-
           <span className="ml-auto text-[11px] text-gray-700">Ctrl+Enter</span>
         </div>
 
-        {/* Textarea + send button */}
         <div className="flex items-end gap-2.5">
           <div
             className="flex flex-1 items-start gap-3 rounded-xl px-4 py-3 transition-all duration-200"
@@ -691,7 +806,6 @@ function InputBar({ onSubmit, sending }) {
               style={{ lineHeight: "1.6", maxHeight: 130 }}
             />
           </div>
-
           <button
             onClick={submit}
             disabled={!text.trim() || sending}
@@ -719,15 +833,14 @@ function InputBar({ onSubmit, sending }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// MAIN
-// ─────────────────────────────────────────────────────────────────────────
+// ─── MAIN ─────────────────────────────────────────────────────────────────────
 const LeadDetails = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const leadId = searchParams.get("leadId");
   const token = localStorage.getItem("user");
   const projectId = localStorage.getItem("projectId");
+  const userId = localStorage.getItem("projectId");
 
   const [dealData, setDealData] = useState(null);
   const [events, setEvents] = useState([]);
@@ -741,10 +854,6 @@ const LeadDetails = () => {
     Authorization: `Bearer ${token}`,
   };
 
-  // userId — localStorage dan
-  const userId = localStorage.getItem("projectId");
-
-  // Description + Task larni birlashtirib, createdAt bo'yicha saralab qaytaradi
   const mergeEvents = (descs, tasks) => {
     const descList = (Array.isArray(descs) ? descs : []).map((d) => ({
       ...d,
@@ -762,7 +871,7 @@ const LeadDetails = () => {
 
   useEffect(() => {
     if (!token || !leadId) return;
-    const init = async () => {
+    (async () => {
       try {
         const requests = [
           fetch(`${API}/leeds/${leadId}`, { headers }),
@@ -790,8 +899,6 @@ const LeadDetails = () => {
 
         setDealData(lead);
         setLeadSource(Array.isArray(sources) ? sources : []);
-
-        // Faqat shu leadga tegishli tasklarni filtrlaymiz
         const leadTasks = (Array.isArray(tasks) ? tasks : []).filter(
           (t) => String(t.leadsId) === String(leadId),
         );
@@ -802,8 +909,7 @@ const LeadDetails = () => {
       } finally {
         setLoading(false);
       }
-    };
-    init();
+    })();
   }, []);
 
   const refreshEvents = async () => {
@@ -827,24 +933,18 @@ const LeadDetails = () => {
   };
 
   const handlePostDesc = async (text, type, date) => {
-    console.log(date);
-
     setSending(true);
     try {
       if (type === "tasks") {
-        const body = {
-          projectId: Number(projectId),
-          leadsId: Number(leadId),
-          description: text,
-          ...(date && { date }), // "2025-06-15T14:30:00" — ISO 8601
-        };
-
-        console.log(body);
-
         const res = await fetch(`${API}/tasks`, {
           method: "POST",
           headers,
-          body: JSON.stringify(body),
+          body: JSON.stringify({
+            projectId: Number(projectId),
+            leadsId: Number(leadId),
+            description: text,
+            ...(date && { date }),
+          }),
         });
         if (!res.ok) throw new Error();
       } else {
@@ -907,7 +1007,6 @@ const LeadDetails = () => {
     );
   };
 
-  // ── LOADING ───────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="flex h-screen overflow-hidden bg-[#071828] text-gray-200">
@@ -947,7 +1046,6 @@ const LeadDetails = () => {
 
   if (!dealData) return null;
 
-  // ── RENDER ────────────────────────────────────────────────────────────
   return (
     <div className="flex h-screen overflow-hidden bg-[#071828] text-gray-200">
       {/* ═══ LEFT PANEL ═══ */}
@@ -955,7 +1053,6 @@ const LeadDetails = () => {
         className="flex w-96 shrink-0 flex-col overflow-hidden border-r"
         style={{ borderColor: "rgba(255,255,255,0.05)", background: "#0a1929" }}
       >
-        {/* Header */}
         <div
           className="shrink-0 border-b px-5 py-4"
           style={{ borderColor: "rgba(255,255,255,0.05)" }}
@@ -990,7 +1087,6 @@ const LeadDetails = () => {
           )}
         </div>
 
-        {/* Avatar */}
         <div
           className="shrink-0 border-b px-5 py-4"
           style={{ borderColor: "rgba(255,255,255,0.05)" }}
@@ -1011,7 +1107,6 @@ const LeadDetails = () => {
           </div>
         </div>
 
-        {/* Tabs */}
         <div
           className="flex shrink-0 border-b"
           style={{ borderColor: "rgba(255,255,255,0.05)" }}
@@ -1032,7 +1127,6 @@ const LeadDetails = () => {
           ))}
         </div>
 
-        {/* Tab content */}
         <div className="scrollbar-hide flex-1 overflow-y-auto">
           {activeTab === "asosiy" && (
             <div className="space-y-4 p-5">
@@ -1229,7 +1323,6 @@ const LeadDetails = () => {
 
       {/* ═══ RIGHT PANEL ═══ */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Status badge */}
         <div
           className="flex shrink-0 items-center justify-end border-b px-5 py-3"
           style={{
@@ -1250,7 +1343,6 @@ const LeadDetails = () => {
           )}
         </div>
 
-        {/* Events feed */}
         <div className="scrollbar-hide flex-1 overflow-y-auto px-6 py-5">
           <div className="mx-auto max-w-2xl">
             {dealData.createdAt && (
@@ -1278,7 +1370,14 @@ const LeadDetails = () => {
                 </p>
               </div>
             ) : (
-              events.map((event) => <EventCard key={event.id} event={event} />)
+              events.map((event) => (
+                <EventCard
+                  key={`${event.type}-${event.id}`}
+                  event={event}
+                  headers={headers}
+                  onRefresh={refreshEvents}
+                />
+              ))
             )}
           </div>
         </div>
@@ -1287,16 +1386,12 @@ const LeadDetails = () => {
       </div>
 
       <style>{`
-        @keyframes fadeUp {
-          from { opacity: 0; transform: translateY(10px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
+        @keyframes fadeUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
       `}</style>
     </div>
   );
 };
 
-// ─── Kichik yordamchi componentlar ───────────────────────────────────────────
 function InfoRow({ label, value }) {
   return (
     <div>
@@ -1305,6 +1400,7 @@ function InfoRow({ label, value }) {
     </div>
   );
 }
+
 function PhoneRow({ label, value }) {
   return (
     <div>

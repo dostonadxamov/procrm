@@ -21,11 +21,11 @@ const API = import.meta.env.VITE_VITE_API_KEY_PROHOME;
 // "image/filename.jpg" → "https://back.prohome.uz/api/v1/image/filename.jpg"
 const getImgUrl = (raw) => {
   if (!raw) return null;
-  const clean = raw.replace(/^docs\//, "");
+  const clean = raw.replace(/^image\//, "");
 
   console.log(clean);
 
-  return `${API}/docs/${clean}`;
+  return `${API}/image/${clean}`;
 };
 
 // ── API helper ────────────────────────────────────────────────────────────────

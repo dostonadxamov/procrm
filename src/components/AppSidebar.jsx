@@ -19,6 +19,7 @@ import {
   LayoutDashboard,
   Lock,
   LogOut,
+  MessageSquare,
   Share2,
   ShoppingBag,
   Users,
@@ -46,6 +47,12 @@ const menuItems = [
     roles: ["SALESMANAGER", "ROP", "SUPERADMIN"],
   },
   {
+    title: "Sms/Rassilka",
+    url: "/rassilka",
+    icon: MessageSquare,
+    roles: ["ROP", "SUPERADMIN"],
+  },
+  {
     title: "Lead manbasi",
     url: "/leadSource",
     icon: Share2,
@@ -57,12 +64,12 @@ const menuItems = [
     icon: FolderOpenDot,
     roles: ["ROP", "SUPERADMIN"],
   },
-  {
-    title: "Statuslar",
-    url: "/status",
-    icon: CheckCircle,
-    roles: ["ROP", "SUPERADMIN"],
-  },
+  // {
+  //   title: "Statuslar",
+  //   url: "/status",
+  //   icon: CheckCircle,
+  //   roles: ["ROP", "SUPERADMIN"],
+  // },
 ];
 
 export default function AppSidebar() {
