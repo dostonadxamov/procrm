@@ -282,12 +282,6 @@ export default function Login() {
                 >
                   Parol
                 </label>
-                <a
-                  href="/forgot-password"
-                  className="text-xs text-blue-400 transition-colors hover:text-blue-300 hover:underline"
-                >
-                  Parolni unutdingizmi?
-                </a>
               </div>
               <div className="relative">
                 <input
