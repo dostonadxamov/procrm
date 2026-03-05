@@ -2,28 +2,38 @@ import { useState, useEffect, useRef } from "react";
 import { Copy, Check, Camera, ChevronDown, Loader2 } from "lucide-react";
 
 const API_BASE = import.meta.env.VITE_VITE_API_KEY_PROHOME;
-const IMAGE_BASE = "https://back.prohome.uz/api/v1/image";
 const LANGUAGES = ["Русский", "O'zbek", "English"];
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
-function getImageUrl(imgUrl) {
-  if (!imgUrl) return null;
-  if (imgUrl.startsWith("blob:") || imgUrl.startsWith("http")) return imgUrl;
-  return `${IMAGE_BASE}/${imgUrl}`;
+function getImageUrl(imgName) {
+  if (!imgName) return null;
+  if (imgName.startsWith("blob:") || imgName.startsWith("http")) return imgName;
+  return `${API_BASE}/image/${imgName}`;
 }
 
 function getToken() {
-  const raw = localStorage.getItem("user");
-  return raw;
+  return localStorage.getItem("user") ?? null;
 }
 
-async function fetchProfile() {
-  const res = await fetch(`${API_BASE}/user/profile`, {
-    headers: { Authorization: `Bearer ${getToken()}` },
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+function getUserFromStorage() {
+  try {
+    const raw = localStorage.getItem("userData");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed?.user ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function updateUserInStorage(updatedFields) {
+  try {
+    const raw = localStorage.getItem("userData");
+    const parsed = raw ? JSON.parse(raw) : {};
+    parsed.user = { ...(parsed.user ?? {}), ...updatedFields };
+    localStorage.setItem("userData", JSON.stringify(parsed));
+  } catch {}
 }
 
 async function patchProfile(formData) {
@@ -43,7 +53,7 @@ function CopyBtn({ value }) {
   return (
     <button
       onClick={() => {
-        navigator.clipboard.writeText(value);
+        navigator.clipboard.writeText(String(value));
         setOk(true);
         setTimeout(() => setOk(false), 1500);
       }}
@@ -85,7 +95,9 @@ function LangSelect({ value, onChange }) {
                 onChange(l);
                 setOpen(false);
               }}
-              className={`w-full px-3 py-2 text-left text-sm transition-colors hover:bg-white/10 ${l === value ? "text-blue-400" : "text-[#c8dce8]"}`}
+              className={`w-full px-3 py-2 text-left text-sm transition-colors hover:bg-white/10 ${
+                l === value ? "text-blue-400" : "text-[#c8dce8]"
+              }`}
             >
               {l}
             </button>
@@ -99,7 +111,7 @@ function LangSelect({ value, onChange }) {
 function Row({ label, children }) {
   return (
     <div className="mb-0.5 flex min-h-11 items-start">
-      <div className="w-40 shrink-0 pt-2.5">
+      <div className="w-44 shrink-0 pt-2.5">
         <span className="text-sm text-[#7a9ab5]">{label}</span>
       </div>
       <div className="flex items-center pt-1.5">{children}</div>
@@ -107,126 +119,99 @@ function Row({ label, children }) {
   );
 }
 
-function TInput({ value, onChange, placeholder, type = "text", disabled }) {
+function ReadonlyValue({ value }) {
+  return (
+    <span className="text-sm text-[#c8dce8]">
+      {value !== null && value !== undefined && value !== ""
+        ? String(value)
+        : "—"}
+    </span>
+  );
+}
+
+function TInput({ value, onChange, placeholder, type = "text" }) {
   return (
     <input
       type={type}
-      value={value}
+      value={value ?? ""}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      disabled={disabled}
-      className="w-72 rounded border border-[#253d52] bg-[#1a2e40] px-3 py-2 text-sm text-[#c8dce8] placeholder-[#3a5570] transition-colors outline-none focus:border-blue-500 disabled:opacity-50"
+      className="w-72 rounded border border-[#253d52] bg-[#1a2e40] px-3 py-2 text-sm text-[#c8dce8] placeholder-[#3a5570] transition-colors outline-none focus:border-blue-500"
     />
-  );
-}
-
-function TTextarea({ value, onChange }) {
-  return (
-    <textarea
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      rows={4}
-      className="w-72 resize-none rounded border border-[#253d52] bg-[#1a2e40] px-3 py-2 text-sm text-[#c8dce8] placeholder-[#3a5570] transition-colors outline-none focus:border-blue-500"
-    />
-  );
-}
-
-function Toggle({ active, onChange }) {
-  return (
-    <button
-      onClick={() => onChange(!active)}
-      className={`relative h-5 w-9 rounded-full border transition-colors duration-200 ${
-        active
-          ? "border-blue-500 bg-blue-500"
-          : "border-[#3a5570] bg-transparent"
-      }`}
-    >
-      <span
-        className={`absolute top-0.5 h-3.5 w-3.5 rounded-full transition-all duration-200 ${
-          active ? "left-4.5 bg-white" : "left-0.5 bg-[#3a5570]"
-        }`}
-      />
-    </button>
   );
 }
 
 // ─── main component ──────────────────────────────────────────────────────────
 
 export default function Profile() {
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState(null);
-  const [twoFactor, setTwoFactor] = useState(false);
 
   const [avatarPreview, setAvatarPreview] = useState(null);
   const [avatarFile, setAvatarFile] = useState(null);
 
-  const [form, setForm] = useState({
-    language: "Русский",
-    fullName: "",
-    phone: "",
-    email: "",
-    password: "",
-    note: "",
-    userId: "",
+  // readonly — o'zgartirib bo'lmaydi
+  const [info, setInfo] = useState({
+    id: "",
+    companyId: "",
+    role: "",
+    createdAt: "",
+    updatedAt: "",
   });
 
-  // ── fetch profile on mount ─────────────────────────────────────────────────
+  // editable — PATCH ga yuboriladigan fieldlar
+  const [form, setForm] = useState({
+    fullName: "",
+    email: "",
+    language: "Русский",
+  });
+
+  // dirty tracking uchun initial qiymatlar
+  const [initialForm, setInitialForm] = useState(null);
+
+  // o'zgarish bormi?
+  const isDirty =
+    initialForm !== null &&
+    (JSON.stringify(form) !== JSON.stringify(initialForm) ||
+      avatarFile !== null);
+
+  // ── localStorage dan yuklash ──────────────────────────────────────────────
   useEffect(() => {
-    (async () => {
-      try {
-        setLoading(true);
-        const data = await fetchProfile();
+    const user = getUserFromStorage();
+    if (!user) return;
 
-        const user = data?.data || data?.user || data;
-        setForm((f) => ({
-          ...f,
-          fullName: user.fullName || user.name || "",
-          email: user.email || "",
-          phone: user.phone || "",
-          note: user.note || "",
-          userId: String(user.id || user._id || user.companyId || ""),
-        }));
+    setInfo({
+      id: user.id ?? "",
+      companyId: user.companyId ?? "",
+      role: user.role ?? "",
+      createdAt: user.createdAt ?? "",
+      updatedAt: user.updatedAt ?? "",
+    });
 
-        // Build correct image URL via getImageUrl
-        const rawImg = user.img || user.avatar || user.profileImage;
-        if (rawImg) setAvatarPreview(getImageUrl(rawImg));
-      } catch (err) {
-        setError("Профиль юкланмади: " + err.message);
-        try {
-          const raw = localStorage.getItem("userData");
-          if (raw) {
-            const { user = {} } = JSON.parse(raw);
-            setForm((f) => ({
-              ...f,
-              email: user.email || "",
-              userId: String(user.id || user.companyId || f.userId),
-              fullName:
-                user.name || user.fullName || user.email?.split("@")[0] || "",
-              phone: user.phone || "",
-              note: user.note || "",
-            }));
-          }
-        } catch {}
-      } finally {
-        setLoading(false);
-      }
-    })();
+    const loaded = {
+      fullName: user.fullName ?? "",
+      email: user.email ?? "",
+      language: "Русский",
+    };
+
+    setForm(loaded);
+    setInitialForm(loaded); // dirty tracking uchun initial saqlash
+
+    if (user.img) setAvatarPreview(getImageUrl(user.img));
   }, []);
 
   const set = (k) => (v) => setForm((f) => ({ ...f, [k]: v }));
 
-  // ── avatar file pick ───────────────────────────────────────────────────────
   const handleAvatarChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setAvatarFile(file);
-    setAvatarPreview(URL.createObjectURL(file)); // blob: passes through getImageUrl unchanged
+    setAvatarPreview(URL.createObjectURL(file));
   };
 
-  // ── save / PATCH ───────────────────────────────────────────────────────────
   const handleSave = async () => {
+    if (!isDirty) return;
     setSaving(true);
     setError(null);
     try {
@@ -236,27 +221,27 @@ export default function Profile() {
       if (avatarFile) fd.append("img", avatarFile);
 
       const result = await patchProfile(fd);
+      const updated = result?.data;
 
-      // Update avatar preview from server response using getImageUrl
-      const updatedImg =
-        result?.data?.img || result?.data?.avatar || result?.data?.profileImage;
-      if (updatedImg) {
-        setAvatarPreview(getImageUrl(updatedImg));
-        setAvatarFile(null);
+      if (updated) {
+        setInfo({
+          id: updated.id ?? info.id,
+          companyId: updated.companyId ?? info.companyId,
+          role: updated.role ?? info.role,
+          createdAt: updated.createdAt ?? info.createdAt,
+          updatedAt: updated.updatedAt ?? info.updatedAt,
+        });
+
+        if (updated.img) {
+          setAvatarPreview(getImageUrl(updated.img));
+          setAvatarFile(null);
+        }
+
+        updateUserInStorage(updated);
       }
 
-      try {
-        const raw = localStorage.getItem("userData");
-        const parsed = raw ? JSON.parse(raw) : { user: {} };
-        parsed.user = {
-          ...parsed.user,
-          ...result?.data,
-          name: form.fullName,
-          email: form.email,
-        };
-        localStorage.setItem("userData", JSON.stringify(parsed));
-      } catch {}
-
+      // saqlangandan keyin initial ni yangilaymiz — button yana "Сохранить" bo'ladi
+      setInitialForm({ ...form });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (err) {
@@ -266,7 +251,33 @@ export default function Profile() {
     }
   };
 
-  const avatarLetter = (form.fullName || form.email || "Z")[0].toUpperCase();
+  const formatDate = (iso) => {
+    if (!iso) return "—";
+    return new Date(iso).toLocaleString("ru-RU", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  const avatarLetter = (form.fullName || form.email || "U")[0].toUpperCase();
+
+  // button holati
+  const btnLabel = saving
+    ? "Сохраняется..."
+    : saved
+      ? "Сохранено ✓"
+      : isDirty
+        ? "Сохранить •"
+        : "Сохранить";
+
+  const btnClass = `flex items-center gap-2 rounded border px-5 py-1.5 text-sm font-medium transition-colors disabled:opacity-50 ${
+    isDirty && !saving
+      ? "border-blue-500 bg-blue-600 text-white hover:bg-blue-500"
+      : "border-[#2a4560] bg-[#1a2e40] text-[#9ab8cc] hover:border-[#3a5570]"
+  }`;
 
   return (
     <div
@@ -280,15 +291,15 @@ export default function Profile() {
         </span>
         <button
           onClick={handleSave}
-          disabled={saving || loading}
-          className="flex items-center gap-2 rounded border border-[#2a4560] bg-[#1a2e40] px-5 py-1.5 text-sm font-medium text-[#9ab8cc] transition-colors hover:border-[#3a5570] disabled:opacity-50"
+          disabled={saving || !isDirty}
+          className={btnClass}
         >
           {saving && <Loader2 size={13} className="animate-spin" />}
-          {saved ? "Сохранено ✓" : saving ? "Сохраняется..." : "Сохранить"}
+          {btnLabel}
         </button>
       </div>
 
-      {/* Error banner */}
+      {/* Error */}
       {error && (
         <div className="mx-auto max-w-3xl px-6 pt-4">
           <div className="rounded border border-red-800/50 bg-red-900/20 px-4 py-2 text-sm text-red-400">
@@ -299,124 +310,91 @@ export default function Profile() {
 
       {/* Body */}
       <div className="mx-auto max-w-3xl p-6">
-        {/* Profile Card */}
-        <div className="mb-7 rounded-md border border-[#162840] bg-[#0f2030] p-7">
-          {loading ? (
-            <div className="flex items-center justify-center py-10 text-[#456070]">
-              <Loader2 size={22} className="mr-2 animate-spin" />
-              <span className="text-sm">Загрузка профиля...</span>
-            </div>
-          ) : (
-            <div className="flex gap-9">
-              {/* Avatar */}
-              <div className="shrink-0">
-                <div className="relative h-24 w-24">
-                  {avatarPreview ? (
-                    <img
-                      src={avatarPreview}
-                      alt="avatar"
-                      className="h-full w-full rounded-full object-cover"
-                    />
-                  ) : (
-                    <div
-                      className="flex h-full w-full items-center justify-center overflow-hidden rounded-full text-4xl font-black text-white"
-                      style={{
-                        background: "linear-gradient(145deg,#7a3810,#a04a20)",
-                      }}
-                    >
-                      {avatarLetter}
-                    </div>
-                  )}
-                  <label className="absolute right-1 bottom-1 flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border border-[#2a4560] bg-[#1a2e40] transition-colors hover:bg-[#243d54]">
-                    <Camera size={13} className="text-[#7a9ab5]" />
-                    <input
-                      type="file"
-                      accept="image/jpg,image/png,image/jpeg,image/gif"
-                      className="hidden"
-                      onChange={handleAvatarChange}
-                    />
-                  </label>
-                </div>
-              </div>
-
-              {/* Fields */}
-              <div className="flex-1">
-                <Row label="ID пользователя">
-                  <span className="text-sm text-[#7a9ab5]">{form.userId}</span>
-                  <CopyBtn value={form.userId} />
-                </Row>
-                <Row label="Language / Язык">
-                  <LangSelect
-                    value={form.language}
-                    onChange={set("language")}
+        <div className="rounded-md border border-[#162840] bg-[#0f2030] p-7">
+          <div className="flex gap-9">
+            {/* Avatar */}
+            <div className="shrink-0">
+              <div className="relative h-24 w-24">
+                {avatarPreview ? (
+                  <img
+                    src={avatarPreview}
+                    alt="avatar"
+                    className="h-full w-full rounded-full object-cover"
                   />
-                </Row>
-                <Row label="Полное имя">
-                  <TInput
-                    value={form.fullName}
-                    onChange={set("fullName")}
-                    placeholder="Введите имя"
+                ) : (
+                  <div
+                    className="flex h-full w-full items-center justify-center overflow-hidden rounded-full text-4xl font-black text-white"
+                    style={{
+                      background: "linear-gradient(145deg,#7a3810,#a04a20)",
+                    }}
+                  >
+                    {avatarLetter}
+                  </div>
+                )}
+                <label className="absolute right-1 bottom-1 flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border border-[#2a4560] bg-[#1a2e40] transition-colors hover:bg-[#243d54]">
+                  <Camera size={13} className="text-[#7a9ab5]" />
+                  <input
+                    type="file"
+                    accept="image/jpg,image/png,image/jpeg,image/gif"
+                    className="hidden"
+                    onChange={handleAvatarChange}
                   />
-                </Row>
-                <Row label="Телефон">
-                  <TInput
-                    value={form.phone}
-                    onChange={set("phone")}
-                    placeholder="+998 xx xxx xx xx"
-                  />
-                </Row>
-                <Row label="Email">
-                  <TInput
-                    value={form.email}
-                    onChange={set("email")}
-                    placeholder="email@example.com"
-                    type="email"
-                  />
-                </Row>
-                <Row label="Пароль">
-                  <TInput
-                    value={form.password}
-                    onChange={set("password")}
-                    placeholder="••••••"
-                    type="password"
-                  />
-                </Row>
-                <Row label="Примечание">
-                  <TTextarea value={form.note} onChange={set("note")} />
-                </Row>
+                </label>
               </div>
             </div>
-          )}
-        </div>
 
-        {/* Security */}
-        {/* <p className="mb-3 text-[15px] font-medium text-[#c0d8e8]">
-          Безопасность
-        </p>
-        <div className="mb-7 rounded-md border border-[#162840] bg-[#0f2030] px-6 py-4">
-          <div className="mb-2 flex items-center gap-3">
-            <span className="text-sm font-medium text-[#c0d8e8]">
-              2-этапная проверка
-            </span>
-            <Toggle active={twoFactor} onChange={setTwoFactor} />
+            {/* Fields */}
+            <div className="flex-1">
+              {/* ── Readonly ── */}
+              <Row label="ID">
+                <ReadonlyValue value={info.id} />
+                {info.id !== "" && <CopyBtn value={info.id} />}
+              </Row>
+              <Row label="Company ID">
+                <ReadonlyValue value={info.companyId} />
+                {info.companyId !== "" && <CopyBtn value={info.companyId} />}
+              </Row>
+              <Row label="Role">
+                {info.role ? (
+                  <span className="rounded bg-[#1a3a50] px-2 py-0.5 text-xs font-semibold tracking-wide text-blue-300">
+                    {info.role}
+                  </span>
+                ) : (
+                  <ReadonlyValue value={null} />
+                )}
+              </Row>
+              <Row label="Создан">
+                <ReadonlyValue value={formatDate(info.createdAt)} />
+              </Row>
+              <Row label="Обновлён">
+                <ReadonlyValue value={formatDate(info.updatedAt)} />
+              </Row>
+
+              {/* ── Divider ── */}
+              <div className="my-3 border-t border-[#162840]" />
+
+              {/* ── Editable ── */}
+              <Row label="Полное имя">
+                <TInput
+                  value={form.fullName}
+                  onChange={set("fullName")}
+                  placeholder="Введите имя"
+                />
+              </Row>
+              <Row label="Email">
+                <TInput
+                  value={form.email}
+                  onChange={set("email")}
+                  placeholder="email@example.com"
+                  type="email"
+                />
+              </Row>
+              <Row label="Language / Язык">
+                <LangSelect value={form.language} onChange={set("language")} />
+              </Row>
+            </div>
           </div>
-          <p className="max-w-2xl text-[12.5px] leading-relaxed text-[#456070]">
-            Добавьте дополнительную защиту для вашего аккаунта amoCRM. Помимо
-            пароля, при каждом входе потребуется вводить код из письма,
-            отправленного на вашу электронную почту.
-          </p>
-        </div> */}
-
-        {/* Sessions */}
-        {/* <p className="mb-3 text-[15px] font-medium text-[#c0d8e8]">Сеансы</p>
-        <div className="rounded-md border border-[#162840] bg-[#0f2030] px-6 py-4">
-          <p className="text-[12.5px] leading-relaxed text-[#456070]">
-            Список авторизованных устройств. Сеансы завершаются через 3 месяца
-            без активности. Если вы заметили что-то подозрительное, рекомендуем
-            сменить пароль. После смены пароля вы автоматически выйдите из
-            аккаунта на всех устройствах, кроме текущего.
-          </p>
-        </div> */}
+        </div>
       </div>
     </div>
   );

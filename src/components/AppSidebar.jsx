@@ -1,4 +1,4 @@
-import { SidebarRail, useSidebar } from "@/components/ui/sidebar";
+import { useSidebar } from "@/components/ui/sidebar";
 import {
   CalendarCheck2,
   FolderOpenDot,
@@ -6,11 +6,20 @@ import {
   Lock,
   LogOut,
   MessageSquare,
+  Settings,
   Share2,
   ShoppingBag,
   Users,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
+
+const API_BASE = import.meta.env.VITE_VITE_API_KEY_PROHOME;
+
+function getImageUrl(imgName) {
+  if (!imgName) return null;
+  if (imgName.startsWith("blob:") || imgName.startsWith("http")) return imgName;
+  return `${API_BASE}/image/${imgName}`;
+}
 
 const menuItems = [
   {
@@ -51,8 +60,46 @@ const menuItems = [
   },
 ];
 
+// NavLink className orqali active holat — inline style ishlatmaymiz
+function navCls(isActive, isCollapsed, extra = "") {
+  return [
+    "flex items-center rounded-lg no-underline transition-colors duration-150",
+    isCollapsed
+      ? "flex-col justify-center gap-1 px-0 py-2.5"
+      : "flex-row justify-start gap-3 px-4 py-2.5",
+    isActive
+      ? "bg-blue-600 text-white"
+      : "text-slate-400 hover:bg-white/[0.07] hover:text-white",
+    extra,
+  ].join(" ");
+}
+
+function profileCls(isActive, isCollapsed) {
+  return [
+    "mb-1 flex items-center rounded-lg no-underline transition-colors duration-150",
+    isCollapsed
+      ? "flex-col justify-center gap-1 px-0 py-2.5"
+      : "flex-row justify-start gap-2.5 px-3 py-2.5",
+    isActive
+      ? "bg-blue-600 text-white"
+      : "text-slate-400 hover:bg-white/[0.07]",
+  ].join(" ");
+}
+
+function settingCls(isActive, isCollapsed) {
+  return [
+    "mb-1 flex items-center rounded-lg no-underline transition-colors duration-150",
+    isCollapsed
+      ? "flex-col justify-center gap-1 px-0 py-2.5"
+      : "flex-row justify-start gap-2.5 px-3 py-2.5",
+    isActive
+      ? "bg-blue-600 text-white"
+      : "text-slate-400 hover:bg-white/[0.07]",
+  ].join(" ");
+}
+
 export default function AppSidebar() {
-  const { state, toggleSidebar } = useSidebar();
+  const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
 
   let user = {};
@@ -66,103 +113,78 @@ export default function AppSidebar() {
     }
   } catch {}
 
+  const avatarUrl = getImageUrl(user.img);
+  const avatarLetter = (user.fullName || user.email || "U")[0].toUpperCase();
   const visibleMenus = menuItems.filter((item) => item.roles.includes(role));
 
   return (
     <div
-      style={{
-        width: isCollapsed ? "80px" : "220px",
-        minHeight: "100vh",
-        background: "#07131d",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "space-between",
-        transition: "width 0.25s ease",
-        flexShrink: 0,
-      }}
+      className={`${
+        isCollapsed ? "w-20" : "w-[220px]"
+      } sticky top-0 flex h-screen min-h-[80vh] flex-shrink-0 flex-col justify-between bg-[#07131d] transition-[width] duration-[250ms] ease-in-out`}
     >
       {/* TOP */}
       <div>
-        {/* Logo */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: isCollapsed ? "center" : "flex-start",
-            gap: "10px",
-            padding: isCollapsed ? "20px 0" : "20px 16px",
-            borderBottom: "1px solid #ffffff10",
-            cursor: "pointer",
-          }}
-          onClick={toggleSidebar}
-        >
-          <img
-            src="/ProHomeLogo.png"
-            style={{ width: isCollapsed ? "32px" : "36px", flexShrink: 0 }}
-            alt="Pro Home"
-          />
-          {!isCollapsed && (
-            <span
-              style={{
-                color: "#fff",
-                fontWeight: 700,
-                fontSize: "15px",
-                whiteSpace: "nowrap",
-              }}
-            >
-              Pro Home CRM
-            </span>
-          )}
+        {/* Profile link */}
+        <div className="border-b border-white/6 pt-2 pl-2">
+          <NavLink
+            to="/profile"
+            className={({ isActive }) => profileCls(isActive, isCollapsed)}
+          >
+            {/* Avatar */}
+            <div className="relative h-7 w-7 shrink-0">
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt="avatar"
+                  className="h-full w-full rounded-full object-cover"
+                  onError={(e) => {
+                    e.currentTarget.style.display = "none";
+                  }}
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center rounded-full border border-slate-600 bg-[#1a2e40] text-xs font-semibold text-slate-300">
+                  {avatarLetter}
+                </div>
+              )}
+            </div>
+
+            {isCollapsed ? (
+              <span className="text-center text-[10px] leading-tight text-slate-400">
+                {role?.slice(0, 5) || "User"}
+              </span>
+            ) : (
+              <div className="min-w-0">
+                <div className="overflow-hidden text-[13px] font-medium text-ellipsis whitespace-nowrap text-slate-200">
+                  {user.fullName || user.role || "User"}
+                </div>
+                <div className="overflow-hidden text-[11px] text-ellipsis whitespace-nowrap text-slate-700">
+                  {user.email || "—"}
+                </div>
+              </div>
+            )}
+          </NavLink>
         </div>
 
         {/* Menu items */}
-        <nav style={{ padding: "12px 0" }}>
+        <nav className="py-3">
           {visibleMenus.map((item) => (
             <NavLink
               key={item.title}
               to={item.url}
               end={item.url === "/"}
-              style={({ isActive }) => ({
-                display: "flex",
-                flexDirection: isCollapsed ? "column" : "row",
-                alignItems: "center",
-                justifyContent: isCollapsed ? "center" : "flex-start",
-                gap: isCollapsed ? "4px" : "12px",
-                padding: isCollapsed ? "10px 0" : "10px 16px",
-                margin: "2px 8px",
-                borderRadius: "8px",
-                textDecoration: "none",
-                background: isActive ? "#2563eb" : "transparent",
-                color: isActive ? "#fff" : "#94a3b8",
-                transition: "background 0.15s, color 0.15s",
-              })}
-              onMouseEnter={(e) => {
-                if (!e.currentTarget.classList.contains("active")) {
-                  e.currentTarget.style.background = "rgba(255,255,255,0.07)";
-                  e.currentTarget.style.color = "#fff";
-                }
-              }}
-              onMouseLeave={(e) => {
-                const isActive =
-                  e.currentTarget.getAttribute("aria-current") === "page";
-                e.currentTarget.style.background = isActive
-                  ? "#2563eb"
-                  : "transparent";
-                e.currentTarget.style.color = isActive ? "#fff" : "#94a3b8";
-              }}
+              className={({ isActive }) =>
+                navCls(isActive, isCollapsed, "mx-2 my-0.5")
+              }
             >
               <item.icon
                 size={isCollapsed ? 22 : 18}
-                style={{ flexShrink: 0 }}
+                className="flex-shrink-0"
               />
               <span
-                style={{
-                  fontSize: isCollapsed ? "10px" : "14px",
-                  fontWeight: 500,
-                  whiteSpace: "nowrap",
-                  textAlign: isCollapsed ? "center" : "left",
-                  lineHeight: 1.2,
-                }}
+                className={`leading-tight font-medium whitespace-nowrap ${
+                  isCollapsed ? "text-center text-[10px]" : "text-left text-sm"
+                }`}
               >
                 {item.title}
               </span>
@@ -171,43 +193,24 @@ export default function AppSidebar() {
 
           {/* Pro market — disabled */}
           <div
-            style={{
-              display: "flex",
-              flexDirection: isCollapsed ? "column" : "row",
-              alignItems: "center",
-              justifyContent: isCollapsed ? "center" : "flex-start",
-              gap: isCollapsed ? "4px" : "12px",
-              padding: isCollapsed ? "10px 0" : "10px 16px",
-              margin: "2px 8px",
-              borderRadius: "8px",
-              opacity: 0.45,
-              cursor: "not-allowed",
-              color: "#94a3b8",
-            }}
+            className={`mx-2 my-0.5 flex cursor-not-allowed items-center rounded-lg text-slate-400 opacity-45 ${
+              isCollapsed
+                ? "flex-col justify-center gap-1 px-0 py-2.5"
+                : "flex-row justify-start gap-3 px-4 py-2.5"
+            }`}
           >
             <ShoppingBag
               size={isCollapsed ? 22 : 18}
-              style={{ flexShrink: 0 }}
+              className="flex-shrink-0"
             />
             {isCollapsed ? (
-              <span
-                style={{
-                  fontSize: "10px",
-                  fontWeight: 500,
-                  textAlign: "center",
-                  lineHeight: 1.2,
-                }}
-              >
+              <span className="text-center text-[10px] leading-tight font-medium">
                 Pro market
               </span>
             ) : (
-              <div
-                style={{ display: "flex", alignItems: "center", gap: "6px" }}
-              >
-                <span style={{ fontSize: "14px", fontWeight: 500 }}>
-                  Pro market
-                </span>
-                <span style={{ fontSize: "11px", color: "#64748b" }}>Beta</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm font-medium">Pro market</span>
+                <span className="text-[11px] text-slate-500">Beta</span>
                 <Lock size={12} />
               </div>
             )}
@@ -216,120 +219,34 @@ export default function AppSidebar() {
       </div>
 
       {/* BOTTOM */}
-      <div style={{ padding: "8px", borderTop: "1px solid #ffffff10" }}>
-        {/* Profile */}
+      <div className="p-2">
         <NavLink
-          to="/profile"
-          style={({ isActive }) => ({
-            display: "flex",
-            flexDirection: isCollapsed ? "column" : "row",
-            alignItems: "center",
-            justifyContent: isCollapsed ? "center" : "flex-start",
-            gap: isCollapsed ? "4px" : "10px",
-            padding: isCollapsed ? "10px 0" : "10px 12px",
-            borderRadius: "8px",
-            textDecoration: "none",
-            background: isActive ? "#2563eb" : "transparent",
-            color: isActive ? "#fff" : "#94a3b8",
-            marginBottom: "4px",
-            transition: "background 0.15s",
-          })}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = "rgba(255,255,255,0.07)";
-          }}
-          onMouseLeave={(e) => {
-            const isActive =
-              e.currentTarget.getAttribute("aria-current") === "page";
-            e.currentTarget.style.background = isActive
-              ? "#2563eb"
-              : "transparent";
-          }}
+          to="/setting"
+          className={({ isActive }) => settingCls(isActive, isCollapsed)}
         >
-          <div
-            style={{
-              width: isCollapsed ? "28px" : "28px",
-              height: isCollapsed ? "28px" : "28px",
-              borderRadius: "50%",
-              border: "1px solid #475569",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: "12px",
-              fontWeight: 600,
-              color: "#94a3b8",
-              flexShrink: 0,
-            }}
+          <Settings size={isCollapsed ? 22 : 18} className="flex-shrink-0" />
+          <span
+            className={`${isCollapsed ? "text-[10px]" : "text-sm"} font-medium`}
           >
-            {user.role?.charAt(0)?.toUpperCase() || "U"}
-          </div>
-          {isCollapsed ? (
-            <span
-              style={{
-                fontSize: "10px",
-                textAlign: "center",
-                lineHeight: 1.2,
-                color: "#94a3b8",
-              }}
-            >
-              {user.role?.slice(0, 5) || "User"}
-            </span>
-          ) : (
-            <div style={{ minWidth: 0 }}>
-              <div
-                style={{
-                  fontSize: "13px",
-                  fontWeight: 500,
-                  color: "#e2e8f0",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                {user.role || "User"}
-              </div>
-              <div
-                style={{
-                  fontSize: "11px",
-                  color: "#64748b",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                {user.email || "—"}
-              </div>
-            </div>
-          )}
+            Sozlamalar
+          </span>
         </NavLink>
+
+        <div className="my-1 h-px bg-white/[0.06]" />
 
         {/* Logout */}
         <NavLink
           to="/login"
           onClick={() => localStorage.clear()}
-          style={{
-            display: "flex",
-            flexDirection: isCollapsed ? "column" : "row",
-            alignItems: "center",
-            justifyContent: isCollapsed ? "center" : "flex-start",
-            gap: isCollapsed ? "4px" : "10px",
-            padding: isCollapsed ? "10px 0" : "10px 12px",
-            borderRadius: "8px",
-            textDecoration: "none",
-            color: "#94a3b8",
-            transition: "background 0.15s",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = "rgba(220,38,38,0.2)";
-            e.currentTarget.style.color = "#f87171";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "transparent";
-            e.currentTarget.style.color = "#94a3b8";
-          }}
+          className={`flex items-center rounded-lg text-slate-400 no-underline transition-colors duration-150 hover:bg-red-500/20 hover:text-red-400 ${
+            isCollapsed
+              ? "flex-col justify-center gap-1 px-0 py-2.5"
+              : "flex-row justify-start gap-2.5 px-3 py-2.5"
+          }`}
         >
-          <LogOut size={isCollapsed ? 22 : 18} style={{ flexShrink: 0 }} />
+          <LogOut size={isCollapsed ? 22 : 18} className="flex-shrink-0" />
           <span
-            style={{ fontSize: isCollapsed ? "10px" : "14px", fontWeight: 500 }}
+            className={`${isCollapsed ? "text-[10px]" : "text-sm"} font-medium`}
           >
             Logout
           </span>
