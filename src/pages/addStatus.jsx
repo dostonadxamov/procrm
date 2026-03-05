@@ -1,4 +1,19 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragOverlay,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  horizontalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Plus, Trash2, Pen, RefreshCcw, X } from "lucide-react";
 import { toast } from "sonner";
 import { Skeleton } from "../components/ui/skeleton";
@@ -28,26 +43,156 @@ const COLORS = [
   "#ef4444",
 ];
 
+// ── Sortable column wrapper ──────────────────────────────────────────────────
+function SortableColumn({ id, children }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.3 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      {children({ listeners, attributes })}
+    </div>
+  );
+}
+
+// ── Insert modal: + button yonida ochiladi ───────────────────────────────────
+function InsertModal({ anchorRef, afterId, projectId, onClose, onSubmit }) {
+  const modalRef = useRef();
+  const [name, setName] = useState("");
+  const [color, setColor] = useState("#3b82f6");
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+
+  // anchor button pozitsiyasiga qarab joylashadi
+  useEffect(() => {
+    if (anchorRef?.current) {
+      const rect = anchorRef.current.getBoundingClientRect();
+      setPos({
+        top: rect.bottom + window.scrollY + 8,
+        left: rect.left + window.scrollX - 180, // modal markazi
+      });
+    }
+  }, [anchorRef]);
+
+  // tashqariga bosilsa yopiladi
+  useEffect(() => {
+    const h = (e) => {
+      if (
+        modalRef.current &&
+        !modalRef.current.contains(e.target) &&
+        anchorRef?.current &&
+        !anchorRef.current.contains(e.target)
+      ) {
+        onClose();
+      }
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+
+  const handleSubmit = () => {
+    if (!name.trim()) return;
+    const payload = {
+      name: name.trim().toUpperCase(),
+      projectId: Number(projectId),
+      color,
+      after: afterId ?? 0,
+    };
+    onSubmit(payload);
+    onClose();
+  };
+
+  return (
+    <div
+      ref={modalRef}
+      className="fixed z-50 w-64 rounded-xl border border-[#1a3a52] bg-[#0f2942] p-4 shadow-2xl"
+      style={{ top: pos.top, left: Math.max(8, pos.left) }}
+    >
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-white">Yangi status</h3>
+        <button onClick={onClose} className="text-gray-400 hover:text-white">
+          <X size={15} />
+        </button>
+      </div>
+
+      <input
+        type="text"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+        placeholder="Nom kiriting..."
+        autoFocus
+        className="mb-3 w-full rounded-lg border border-[#2a4a62] bg-[#1a3a52] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none"
+      />
+
+      <p className="mb-2 text-xs text-gray-400">Rang</p>
+      <div className="mb-3 grid grid-cols-6 gap-1.5">
+        {COLORS.map((c) => (
+          <button
+            key={c}
+            type="button"
+            onClick={() => setColor(c)}
+            className={`h-6 w-6 rounded-full transition-all ${
+              color === c
+                ? "ring-2 ring-white ring-offset-1 ring-offset-[#0f2942]"
+                : "hover:scale-110"
+            }`}
+            style={{ backgroundColor: c }}
+          />
+        ))}
+      </div>
+
+      <div
+        className="mb-3 h-1 w-full rounded-full"
+        style={{ background: color }}
+      />
+
+      <button
+        onClick={handleSubmit}
+        disabled={!name.trim()}
+        className="w-full rounded-lg bg-blue-600 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        Qo'shish
+      </button>
+    </div>
+  );
+}
+
+// ── Main ─────────────────────────────────────────────────────────────────────
 export default function AddStatus() {
   const token = localStorage.getItem("user");
   const projectId = localStorage.getItem("projectId");
 
   const [columns, setColumns] = useState([]);
-  const [loading, setLoading] = useState(true); // ✅ true boshlanishida
+  const [loading, setLoading] = useState(true);
 
-  // Add form
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newColor, setNewColor] = useState("#3b82f6");
-  const [addLoading, setAddLoading] = useState(false);
+  // insert modal
+  const [insertAfterId, setInsertAfterId] = useState(null); // qaysi column dan keyin
+  const insertBtnRefs = useRef({}); // har + button ning ref i
 
-  // Update form (dialog state per column)
+  // edit dialog
   const [editId, setEditId] = useState(null);
   const [updateName, setUpdateName] = useState("");
   const [updateColor, setUpdateColor] = useState("#3b82f6");
   const [updateLoading, setUpdateLoading] = useState(false);
 
-  // ── Fetch ────────────────────────────────────────────────────────────────
+  // drag state
+  const [activeId, setActiveId] = useState(null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+  );
+
   useEffect(() => {
     if (!token) {
       window.location.href = "/login";
@@ -83,29 +228,56 @@ export default function AddStatus() {
     }
   };
 
-  // ── ADD ──────────────────────────────────────────────────────────────────
-  const addColumn = async () => {
-    if (!newName.trim()) return;
-    setAddLoading(true);
+  const handleDragEnd = async ({ active, over }) => {
+    setActiveId(null);
+    if (!over || active.id === over.id) return;
 
-    const body = {
-      name: newName.trim().toUpperCase(),
-      projectId: Number(projectId), // ✅ companyId emas — projectId
-      color: newColor,
-    };
+    const oldIndex = columns.findIndex((c) => c.id === active.id);
+    const newIndex = columns.findIndex((c) => c.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
 
-    // Optimistic
+    // Optimistic reorder
+    const reordered = arrayMove(columns, oldIndex, newIndex);
+    setColumns(reordered);
+
+    // after: yangi pozitsiyadan oldingi column id (birinchi bo'lsa 0)
+    const afterId = newIndex === 0 ? 0 : reordered[newIndex - 1].id;
+
+    try {
+      const res = await fetch(`${API}/status/${active.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ after: afterId }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      toast.success("Tartib saqlandi ✅");
+    } catch (err) {
+      // rollback
+      setColumns(columns);
+      toast.error("Saqlashda xato: " + err.message);
+    }
+  };
+
+  const handleInsertSubmit = async (payload) => {
     const tempId = Date.now();
     const tempCol = {
       id: tempId,
-      name: body.name,
-      color: body.color,
+      name: payload.name,
+      color: payload.color,
       _temp: true,
     };
-    setColumns((prev) => [...prev, tempCol]);
-    setShowAddForm(false);
-    setNewName("");
-    setNewColor("#3b82f6");
+
+    setColumns((prev) => {
+      if (!payload.after) return [tempCol, ...prev]; // after:0 => birinchi
+      const idx = prev.findIndex((c) => c.id === payload.after);
+      if (idx === -1) return [...prev, tempCol];
+      const next = [...prev];
+      next.splice(idx + 1, 0, tempCol);
+      return next;
+    });
 
     try {
       const res = await fetch(`${API}/status`, {
@@ -114,62 +286,48 @@ export default function AddStatus() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error();
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      // Temp ni haqiqiy bilan almashtir
       setColumns((prev) =>
         prev.map((c) => (c.id === tempId ? { ...data } : c)),
       );
       toast.success("Status qo'shildi ✅");
-    } catch {
-      // Rollback
+    } catch (err) {
       setColumns((prev) => prev.filter((c) => c.id !== tempId));
-      toast.error("Qo'shishda xato ❌");
-      setShowAddForm(true);
-      setNewName(body.name);
-    } finally {
-      setAddLoading(false);
+      toast.error("Qo'shishda xato: " + err.message);
     }
   };
 
-  // ── DELETE ───────────────────────────────────────────────────────────────
   const deleteColumn = async (columnId) => {
-    // Optimistic
     const prev = columns;
     setColumns((c) => c.filter((col) => col.id !== columnId));
-
     try {
       const res = await fetch(`${API}/status/${columnId}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.message || "O'chirishda xato");
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.message || "Xato");
       }
       toast.success("Status o'chirildi ✅");
     } catch (err) {
-      setColumns(prev); // rollback
+      setColumns(prev);
       toast.error(err.message || "O'chirishda xato ❌");
     }
   };
 
-  // ── UPDATE ───────────────────────────────────────────────────────────────
   const updateColumn = async (columnId) => {
     if (!updateName.trim()) return;
     setUpdateLoading(true);
-
     const body = { name: updateName.trim(), color: updateColor };
-
-    // Optimistic
     const prev = columns;
     setColumns((c) =>
       c.map((col) => (col.id === columnId ? { ...col, ...body } : col)),
     );
     setEditId(null);
-
     try {
       const res = await fetch(`${API}/status/${columnId}`, {
         method: "PATCH",
@@ -182,17 +340,16 @@ export default function AddStatus() {
       if (!res.ok) throw new Error();
       toast.success("Status yangilandi ✅");
     } catch {
-      setColumns(prev); // rollback
+      setColumns(prev);
       toast.error("Yangilashda xato ❌");
     } finally {
       setUpdateLoading(false);
     }
   };
 
-  // ── Loading ──────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="flex gap-4 overflow-x-auto bg-[#0a1929] p-6">
+      <div className="flex gap-0 overflow-x-auto bg-[#0a1929] p-6">
         {Array(5)
           .fill(0)
           .map((_, i) => (
@@ -205,7 +362,6 @@ export default function AddStatus() {
     );
   }
 
-  // ── Loyiha yo'q ───────────────────────────────────────────────────────────
   if (!projectId) {
     return (
       <div className="flex flex-1 items-center justify-center bg-[#0a1929] text-gray-400">
@@ -214,196 +370,227 @@ export default function AddStatus() {
     );
   }
 
-  // ── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="flex h-screen overflow-hidden bg-[#0a1929]">
       <div className="scrollbar-hide flex flex-1 gap-0 overflow-x-auto">
-        {/* ── Columns ──────────────────────────────────────────────────── */}
-        {columns.map((column) => (
-          <div
-            key={column.id}
-            className="relative flex h-full w-70 shrink-0 flex-col border-r border-[#1a3a52]"
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={({ active }) => setActiveId(active.id)}
+          onDragEnd={handleDragEnd}
+          onDragCancel={() => setActiveId(null)}
+        >
+          <SortableContext
+            items={columns.map((c) => c.id)}
+            strategy={horizontalListSortingStrategy}
           >
-            {/* Header */}
-            <div
-              className="shrink-0 bg-[#0f2942]"
-              style={{ borderBottom: `4px solid ${column.color || "#6b7280"}` }}
-            >
-              <div className="flex items-center justify-between border-b border-[#1a3a52] px-3 py-3">
-                <h2 className="text-xs font-semibold tracking-wide text-white uppercase">
-                  {column.name}
-                  {column._temp && (
-                    <span className="ml-2 text-[10px] text-gray-500">
-                      saqlanmoqda...
-                    </span>
-                  )}
-                </h2>
-
-                <div className="flex items-center gap-2">
-                  {/* Delete */}
-                  <button
-                    onClick={() => deleteColumn(column.id)}
-                    disabled={!!column._temp}
-                    className="text-gray-400 transition-colors hover:text-red-500 disabled:opacity-30"
+            {columns.map((column, index) => (
+              <SortableColumn key={column.id} id={column.id}>
+                {({ listeners, attributes }) => (
+                  <div
+                    className="relative flex h-full shrink-0 flex-col border-r border-[#1a3a52]"
+                    style={{ width: "280px" }}
                   >
-                    <Trash2 size={15} />
-                  </button>
+                    {/* ── Header ── */}
+                    <div
+                      className="relative shrink-0 bg-[#0f2942]"
+                      style={{
+                        borderBottom: `3px solid ${column.color || "#6b7280"}`,
+                      }}
+                    >
+                      <div className="flex items-center justify-between px-4 py-3">
+                        <h2 className="text-xs font-semibold tracking-widest text-white uppercase">
+                          {column.name}
+                          {column._temp && (
+                            <span className="ml-2 text-[10px] font-normal text-gray-500 normal-case">
+                              saqlanmoqda...
+                            </span>
+                          )}
+                        </h2>
 
-                  {/* Edit dialog */}
-                  <Dialog
-                    open={editId === column.id}
-                    onOpenChange={(open) => {
-                      if (open) {
-                        setEditId(column.id);
-                        setUpdateName(column.name);
-                        setUpdateColor(column.color || "#3b82f6");
-                      } else {
-                        setEditId(null);
-                      }
-                    }}
-                  >
-                    <DialogTrigger asChild>
-                      <button
-                        disabled={!!column._temp}
-                        className="text-gray-400 transition-colors hover:text-blue-400 disabled:opacity-30"
-                      >
-                        <Pen size={15} />
-                      </button>
-                    </DialogTrigger>
-                    <DialogContent className="bg-[#0f2231] text-white">
-                      <DialogHeader>
-                        <DialogTitle>Statusni tahrirlash</DialogTitle>
-                      </DialogHeader>
-                      <form
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          updateColumn(column.id);
-                        }}
-                        className="space-y-4 pt-2"
-                      >
-                        <input
-                          type="text"
-                          value={updateName}
-                          onChange={(e) => setUpdateName(e.target.value)}
-                          placeholder="Nom kiriting..."
-                          className="w-full rounded-lg border border-[#2a4a62] bg-[#1a3a52] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none"
-                          autoFocus
-                        />
-                        <div>
-                          <p className="mb-2 text-xs text-gray-400">Rang</p>
-                          <div className="grid grid-cols-8 gap-2">
-                            {COLORS.map((c) => (
+                        <div className="flex items-center gap-2">
+                          <span
+                            {...listeners}
+                            {...attributes}
+                            className="cursor-grab text-[#3a5570] select-none active:cursor-grabbing"
+                          >
+                            ⠿
+                          </span>
+
+                          <button
+                            onClick={() => deleteColumn(column.id)}
+                            disabled={!!column._temp}
+                            className="text-gray-500 transition-colors hover:text-red-500 disabled:opacity-30"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+
+                          <Dialog
+                            open={editId === column.id}
+                            onOpenChange={(open) => {
+                              if (open) {
+                                setEditId(column.id);
+                                setUpdateName(column.name);
+                                setUpdateColor(column.color || "#3b82f6");
+                              } else setEditId(null);
+                            }}
+                          >
+                            <DialogTrigger asChild>
                               <button
-                                type="button"
-                                key={c}
-                                onClick={() => setUpdateColor(c)}
-                                className={`h-7 w-7 rounded-full transition-all ${
-                                  updateColor === c
-                                    ? "ring-2 ring-white ring-offset-1 ring-offset-[#0f2231]"
-                                    : "hover:scale-110"
-                                }`}
-                                style={{ backgroundColor: c }}
-                              />
-                            ))}
-                          </div>
+                                disabled={!!column._temp}
+                                className="text-gray-500 transition-colors hover:text-blue-400 disabled:opacity-30"
+                              >
+                                <Pen size={14} />
+                              </button>
+                            </DialogTrigger>
+                            <DialogContent className="bg-[#0f2231] text-white">
+                              <DialogHeader>
+                                <DialogTitle>Statusni tahrirlash</DialogTitle>
+                              </DialogHeader>
+                              <form
+                                onSubmit={(e) => {
+                                  e.preventDefault();
+                                  updateColumn(column.id);
+                                }}
+                                className="space-y-4 pt-2"
+                              >
+                                <input
+                                  type="text"
+                                  value={updateName}
+                                  onChange={(e) =>
+                                    setUpdateName(e.target.value)
+                                  }
+                                  placeholder="Nom kiriting..."
+                                  className="w-full rounded-lg border border-[#2a4a62] bg-[#1a3a52] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none"
+                                  autoFocus
+                                />
+                                <div>
+                                  <p className="mb-2 text-xs text-gray-400">
+                                    Rang
+                                  </p>
+                                  <div className="grid grid-cols-8 gap-2">
+                                    {COLORS.map((c) => (
+                                      <button
+                                        type="button"
+                                        key={c}
+                                        onClick={() => setUpdateColor(c)}
+                                        className={`h-7 w-7 rounded-full transition-all ${
+                                          updateColor === c
+                                            ? "ring-2 ring-white ring-offset-1 ring-offset-[#0f2231]"
+                                            : "hover:scale-110"
+                                        }`}
+                                        style={{ backgroundColor: c }}
+                                      />
+                                    ))}
+                                  </div>
+                                </div>
+                                <Button
+                                  type="submit"
+                                  className="w-full"
+                                  disabled={updateLoading || !updateName.trim()}
+                                >
+                                  <RefreshCcw
+                                    size={14}
+                                    className={
+                                      updateLoading ? "animate-spin" : ""
+                                    }
+                                  />
+                                  {updateLoading
+                                    ? "Yangilanmoqda..."
+                                    : "Yangilash"}
+                                </Button>
+                              </form>
+                            </DialogContent>
+                          </Dialog>
                         </div>
-                        <Button
-                          type="submit"
-                          className="w-full"
-                          disabled={updateLoading || !updateName.trim()}
+                      </div>
+
+                      {/* + button — faqat oxirgi column dan tashqari */}
+                      {index < columns.length - 1 && (
+                        <button
+                          ref={(el) => (insertBtnRefs.current[column.id] = el)}
+                          onClick={() =>
+                            setInsertAfterId((prev) =>
+                              prev === column.id ? null : column.id,
+                            )
+                          }
+                          className={`absolute -right-3 -bottom-3 z-10 flex h-6 w-6 items-center justify-center rounded-full border transition-all ${
+                            insertAfterId === column.id
+                              ? "border-blue-500 bg-blue-600 text-white"
+                              : "border-[#2a4a62] bg-[#0a1929] text-gray-400 hover:border-blue-500 hover:bg-blue-600 hover:text-white"
+                          }`}
                         >
-                          <RefreshCcw
-                            size={14}
-                            className={updateLoading ? "animate-spin" : ""}
-                          />
-                          {updateLoading ? "Yangilanmoqda..." : "Yangilash"}
-                        </Button>
-                      </form>
-                    </DialogContent>
-                  </Dialog>
-                </div>
-              </div>
-            </div>
+                          <Plus size={12} />
+                        </button>
+                      )}
+                    </div>
 
-            {/* Body — bo'sh (cells logic kerak bo'lsa qo'shiladi) */}
-            <div className="scrollbar-hide flex-1 overflow-y-auto bg-[#0f2942]" />
-          </div>
-        ))}
+                    {/* ── Body ── */}
+                    <div className="scrollbar-hide flex-1 overflow-y-auto bg-[#0f2942]" />
+                  </div>
+                )}
+              </SortableColumn>
+            ))}
+          </SortableContext>
 
-        {/* ── Add column panel ─────────────────────────────────────────── */}
-        <div className="flex h-full w-72 shrink-0 flex-col border-r border-[#1a3a52] bg-[#0a1929] p-4">
-          {showAddForm ? (
-            <div className="rounded-xl border border-[#1a3a52] bg-[#0f2942] p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-white">
-                  Yangi status
-                </h3>
-                <button
-                  onClick={() => setShowAddForm(false)}
-                  className="text-gray-400 hover:text-white"
-                >
-                  <X size={16} />
-                </button>
-              </div>
+          {/* Drag overlay — sürüklənən column ko'rinishi */}
+          <DragOverlay>
+            {activeId
+              ? (() => {
+                  const col = columns.find((c) => c.id === activeId);
+                  return col ? (
+                    <div
+                      className="flex h-20 shrink-0 flex-col rounded-lg border border-blue-500/50 bg-[#0f2942] shadow-2xl shadow-blue-500/20"
+                      style={{
+                        width: "280px",
+                        borderBottom: `3px solid ${col.color || "#6b7280"}`,
+                      }}
+                    >
+                      <div className="flex items-center px-4 py-3">
+                        <span className="text-xs font-semibold tracking-widest text-white uppercase">
+                          {col.name}
+                        </span>
+                      </div>
+                    </div>
+                  ) : null;
+                })()
+              : null}
+          </DragOverlay>
+        </DndContext>
 
-              <input
-                type="text"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && addColumn()}
-                placeholder="Nom kiriting..."
-                className="mb-3 w-full rounded-lg border border-[#2a4a62] bg-[#1a3a52] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none"
-                autoFocus
-              />
-
-              <div className="mb-4">
-                <p className="mb-2 text-xs text-gray-400">Rang</p>
-                <div className="grid grid-cols-8 gap-1.5">
-                  {COLORS.map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => setNewColor(c)}
-                      className={`h-6 w-6 rounded-full transition-all ${
-                        newColor === c
-                          ? "ring-2 ring-white ring-offset-1 ring-offset-[#0f2942]"
-                          : "hover:scale-110"
-                      }`}
-                      style={{ backgroundColor: c }}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              {/* Rang preview */}
-              <div
-                className="mb-3 h-1.5 w-full rounded-full"
-                style={{ background: newColor }}
-              />
-
-              <button
-                onClick={addColumn}
-                disabled={!newName.trim() || addLoading}
-                className="w-full rounded-lg bg-blue-600 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {addLoading ? "Qo'shilmoqda..." : "Qo'shish"}
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => {
-                setShowAddForm(true);
-                setNewName("");
-                setNewColor("#3b82f6");
-              }}
-              className="flex items-center gap-2 rounded-xl border border-dashed border-[#2a4a62] px-4 py-3 text-sm text-gray-400 transition-colors hover:border-blue-500/50 hover:bg-[#0f2942] hover:text-white"
-            >
-              <Plus size={16} />
-              Yangi status qo'shish
-            </button>
-          )}
+        {/* ── Oxirgi column dan keyin yangi status qo'shish ── */}
+        <div className="flex h-full w-64 shrink-0 flex-col border-r border-[#1a3a52] bg-[#0a1929] p-4">
+          <button
+            ref={(el) => (insertBtnRefs.current["end"] = el)}
+            onClick={() =>
+              setInsertAfterId((prev) => (prev === "end" ? null : "end"))
+            }
+            className={`flex items-center gap-2 rounded-xl border border-dashed px-4 py-3 text-sm transition-colors ${
+              insertAfterId === "end"
+                ? "border-blue-500 bg-[#0f2942] text-white"
+                : "border-[#2a4a62] text-gray-400 hover:border-blue-500/50 hover:bg-[#0f2942] hover:text-white"
+            }`}
+          >
+            <Plus size={16} />
+            Yangi status qo'shish
+          </button>
         </div>
       </div>
+
+      {/* ── Insert modal — qaysi + bosilgan bo'lsa o'sha yaqinida ochiladi ── */}
+      {insertAfterId !== null && (
+        <InsertModal
+          anchorRef={{ current: insertBtnRefs.current[insertAfterId] }}
+          afterId={
+            insertAfterId === "end"
+              ? (columns[columns.length - 1]?.id ?? 0)
+              : insertAfterId
+          }
+          projectId={projectId}
+          onClose={() => setInsertAfterId(null)}
+          onSubmit={handleInsertSubmit}
+        />
+      )}
     </div>
   );
 }

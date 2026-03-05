@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   CheckCircle2,
   Circle,
@@ -9,8 +9,13 @@ import {
   Phone,
   User,
   Clock,
+  ChevronUp,
+  ChevronDown,
+  ChevronsUpDown,
+  Filter,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Link } from "react-router-dom";
 
 const API = import.meta.env.VITE_VITE_API_KEY_PROHOME;
 const IMAGE_BASE = "https://back.prohome.uz/api/v1/image";
@@ -21,7 +26,6 @@ function getImageUrl(src) {
   return `${IMAGE_BASE}/${src}`;
 }
 
-// ── API statuslar ─────────────────────────────────────────────────────────
 const API_STATUSES = {
   STARTED: { label: "Jarayonda", color: "#f59e0b" },
   PENDING: { label: "Kutilmoqda", color: "#6b7280" },
@@ -34,14 +38,13 @@ const TYPES = {
   meeting: { label: "Uchrashuv", color: "#8b5cf6" },
 };
 
-// ── Helpers ───────────────────────────────────────────────────────────────
 function isOverdue(dateStr, status) {
   if (status === "FINISHED" || !dateStr) return false;
   return new Date(dateStr) < new Date(new Date().toDateString());
 }
 
 function formatDate(dateStr) {
-  if (!dateStr) return "";
+  if (!dateStr) return "—";
   return new Date(dateStr).toLocaleDateString("uz-UZ", {
     day: "2-digit",
     month: "short",
@@ -53,7 +56,6 @@ function formatPhone(phone) {
   return phone.replace(/(\+998)(\d{2})(\d{3})(\d{2})(\d{2})/, "$1 $2 $3 $4 $5");
 }
 
-// ── Avatar (harf yoki rasm) ───────────────────────────────────────────────
 function Avatar({ name, size = 7 }) {
   const initials = name
     ? name
@@ -82,7 +84,6 @@ function Avatar({ name, size = 7 }) {
   );
 }
 
-// ── LeadSource icon (Instagram/Telegram rasm yoki fallback) ──────────────
 function SourceIcon({ source }) {
   if (!source) return null;
   const url = getImageUrl(source.icon);
@@ -106,165 +107,16 @@ function SourceIcon({ source }) {
   );
 }
 
-// ── Task Row ──────────────────────────────────────────────────────────────
-function TaskRow({ task, onToggle, onDelete, style }) {
-  const overdue = isOverdue(task.taskDate, task.status);
-  const isDone = task.status === "FINISHED";
-  const type = TYPES[task.type] || TYPES.task;
-  const statusInfo = API_STATUSES[task.status] || API_STATUSES.PENDING;
-
-  // Lead ma'lumotlari
-  const lead = task.lead;
-  const leadName = lead
-    ? `${lead.firstName || ""} ${lead.lastName || ""}`.trim()
-    : null;
-  const leadPhone = lead?.phone;
-  const leadSource = lead?.leadSource;
-  const leadStatus = lead?.status;
-  const assignedUser = lead?.assignedUser || task.assignedUser;
-  const remaining = task.taskRemainingDays ?? lead?.taskRemainingDays;
-
-  return (
-    <div
-      className={`group rounded-xl border transition-all duration-150 ${
-        isDone
-          ? "border-white/3 bg-white/1 opacity-55"
-          : "border-white/5 bg-white/3 hover:border-white/10 hover:bg-white/5"
-      }`}
-      style={style}
-    >
-      {/* ── Top row ── */}
-      <div className="flex items-center gap-3 px-4 pt-3 pb-2">
-        {/* Toggle */}
-        <button
-          onClick={() => onToggle(task)}
-          className="shrink-0 transition-transform hover:scale-110"
-        >
-          {isDone ? (
-            <CheckCircle2 size={17} className="text-green-500" />
-          ) : (
-            <Circle size={17} className="text-gray-600 hover:text-blue-400" />
-          )}
-        </button>
-
-        {/* Type dot */}
-        <span
-          className="h-2 w-2 shrink-0 rounded-full"
-          style={{ background: type.color, boxShadow: `0 0 5px ${type.color}` }}
-        />
-
-        {/* Task description */}
-        <p
-          className={`min-w-0 flex-1 truncate text-sm font-medium ${isDone ? "text-gray-500 line-through" : "text-white"}`}
-        >
-          {task.description}
-        </p>
-
-        {/* Status badge */}
-        <span
-          className="shrink-0 rounded-md px-2 py-0.5 text-[10px] font-semibold"
-          style={{
-            color: statusInfo.color,
-            background: `${statusInfo.color}18`,
-          }}
-        >
-          {statusInfo.label}
-        </span>
-
-        {/* Delete */}
-        <button
-          onClick={() => onDelete(task.id)}
-          className="shrink-0 text-gray-700 opacity-0 transition-all group-hover:opacity-100 hover:text-red-400"
-        >
-          <Trash2 size={13} />
-        </button>
-      </div>
-
-      {/* ── Lead info row (faqat lead bo'lsa) ── */}
-      {(leadName ||
-        leadPhone ||
-        assignedUser ||
-        leadSource ||
-        leadStatus ||
-        task.taskDate) && (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-white/[0.04] px-4 py-2">
-          {/* Mijoz ismi + lead statusi */}
-          {leadName && (
-            <div className="flex items-center gap-1.5">
-              <Avatar name={leadName} size={5} />
-              <span className="text-xs font-medium text-gray-300">
-                {leadName}
-              </span>
-              {leadStatus && (
-                <span
-                  className="rounded px-1.5 py-px text-[9px] font-semibold"
-                  style={{
-                    color: leadStatus.color || "#94a3b8",
-                    background: `${leadStatus.color || "#94a3b8"}20`,
-                  }}
-                >
-                  {leadStatus.name}
-                </span>
-              )}
-            </div>
-          )}
-
-          {/* Telefon */}
-          {leadPhone && (
-            <a
-              href={`tel:${leadPhone}`}
-              className="flex items-center gap-1 text-xs text-gray-500 transition-colors hover:text-blue-400"
-            >
-              <Phone size={10} />
-              {formatPhone(leadPhone)}
-            </a>
-          )}
-
-          {/* Manba (Instagram/Telegram icon) */}
-          {leadSource && (
-            <div className="flex items-center gap-1">
-              <SourceIcon source={leadSource} />
-              <span className="text-[10px] text-gray-600">
-                {leadSource.name}
-              </span>
-            </div>
-          )}
-
-          {/* Mas'ul xodim */}
-          {assignedUser?.fullName && (
-            <div className="flex items-center gap-1 text-[10px] text-gray-600">
-              <User size={10} />
-              {assignedUser.fullName}
-            </div>
-          )}
-
-          {/* Qolgan kunlar */}
-          {remaining != null && remaining > 0 && !isDone && (
-            <div
-              className={`flex items-center gap-1 text-[10px] ${remaining <= 1 ? "text-red-400" : "text-gray-600"}`}
-            >
-              <Clock size={10} />
-              {remaining} kun qoldi
-            </div>
-          )}
-
-          {/* Sana */}
-          {task.taskDate && (
-            <div
-              className={`flex items-center gap-1 text-xs ${overdue ? "text-red-400" : "text-gray-600"}`}
-            >
-              {overdue && <AlertCircle size={10} />}
-              <Calendar size={10} />
-              {formatDate(task.taskDate)}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
+function SortIcon({ field, sortBy, dir }) {
+  if (sortBy !== field)
+    return <ChevronsUpDown size={12} className="text-gray-600" />;
+  return dir === "asc" ? (
+    <ChevronUp size={12} className="text-blue-400" />
+  ) : (
+    <ChevronDown size={12} className="text-blue-400" />
   );
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────
 export default function Tasks() {
   const token = localStorage.getItem("user");
   const projectId = localStorage.getItem("projectId");
@@ -274,16 +126,16 @@ export default function Tasks() {
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [activeTab, setActiveTab] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [sortBy, setSortBy] = useState("taskDate");
+  const [sortDir, setSortDir] = useState("desc");
 
-  console.log(tasks);
-
-  // ── Fetch tasks ──────────────────────────────────────────────────────
   useEffect(() => {
     if (!token || !projectId) {
       setLoading(false);
       return;
     }
-
     (async () => {
       try {
         const res = await fetch(`${API}/tasks/${projectId}`, {
@@ -305,7 +157,6 @@ export default function Tasks() {
     })();
   }, []);
 
-  // ── Toggle ───────────────────────────────────────────────────────────
   const handleToggle = async (task) => {
     const newStatus = task.status === "FINISHED" ? "STARTED" : "FINISHED";
     setTasks((p) =>
@@ -329,7 +180,6 @@ export default function Tasks() {
     }
   };
 
-  // ── Delete ───────────────────────────────────────────────────────────
   const handleDelete = async (id) => {
     const prev = tasks;
     setTasks((p) => p.filter((t) => t.id !== id));
@@ -346,26 +196,15 @@ export default function Tasks() {
     }
   };
 
-  // ── Filter ───────────────────────────────────────────────────────────
-  const today = new Date().toISOString().slice(0, 10);
+  const handleSort = (field) => {
+    if (sortBy === field) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else {
+      setSortBy(field);
+      setSortDir("asc");
+    }
+  };
 
-  const filtered = tasks.filter((t) => {
-    const taskDay = t.taskDate ? t.taskDate.slice(0, 10) : "";
-    const leadName = t.lead
-      ? `${t.lead.firstName || ""} ${t.lead.lastName || ""}`.toLowerCase()
-      : "";
-    if (
-      search &&
-      !t.description?.toLowerCase().includes(search.toLowerCase()) &&
-      !leadName.includes(search.toLowerCase())
-    )
-      return false;
-    if (filterStatus !== "all" && t.status !== filterStatus) return false;
-    if (activeTab === "today" && taskDay !== today) return false;
-    if (activeTab === "overdue" && !isOverdue(t.taskDate, t.status))
-      return false;
-    return true;
-  });
+  const today = new Date().toISOString().slice(0, 10);
 
   const stats = {
     today: tasks.filter(
@@ -375,23 +214,75 @@ export default function Tasks() {
     all: tasks.length,
   };
 
-  const active = filtered.filter((t) => t.status !== "FINISHED");
-  const done = filtered.filter((t) => t.status === "FINISHED");
+  const filtered = useMemo(() => {
+    return tasks
+      .filter((t) => {
+        const taskDay = t.taskDate ? t.taskDate.slice(0, 10) : "";
+        const lead = t.leads;
+        const leadName = lead
+          ? `${lead.firstName || ""} ${lead.lastName || ""}`.toLowerCase()
+          : "";
+        if (
+          search &&
+          !t.description?.toLowerCase().includes(search.toLowerCase()) &&
+          !leadName.includes(search.toLowerCase())
+        )
+          return false;
+        if (filterStatus !== "all" && t.status !== filterStatus) return false;
+        if (activeTab === "today" && taskDay !== today) return false;
+        if (activeTab === "overdue" && !isOverdue(t.taskDate, t.status))
+          return false;
+        if (dateFrom && taskDay < dateFrom) return false;
+        if (dateTo && taskDay > dateTo) return false;
+        return true;
+      })
+      .sort((a, b) => {
+        let va, vb;
+        if (sortBy === "lead") {
+          va = a.leads ? `${a.leads.firstName} ${a.leads.lastName}` : "";
+          vb = b.leads ? `${b.leads.firstName} ${b.leads.lastName}` : "";
+        } else if (sortBy === "status") {
+          va = a.status ?? "";
+          vb = b.status ?? "";
+        } else {
+          va = a[sortBy] ?? "";
+          vb = b[sortBy] ?? "";
+        }
+        if (va < vb) return sortDir === "asc" ? -1 : 1;
+        if (va > vb) return sortDir === "asc" ? 1 : -1;
+        return 0;
+      });
+  }, [
+    tasks,
+    search,
+    filterStatus,
+    activeTab,
+    dateFrom,
+    dateTo,
+    sortBy,
+    sortDir,
+  ]);
 
-  // ── Loading skeleton ─────────────────────────────────────────────────
+  const hasFilters =
+    filterStatus !== "all" ||
+    dateFrom ||
+    dateTo ||
+    search ||
+    activeTab !== "all";
+
   if (loading) {
     return (
-      <div className="flex h-screen flex-col bg-[#071828]">
+      <div className="flex h-full flex-col bg-[#071828]">
         <div className="border-b border-white/5 px-6 py-4">
           <div className="h-6 w-32 animate-pulse rounded-lg bg-white/5" />
         </div>
         <div className="flex flex-col gap-2 p-6">
-          {Array(5)
+          {Array(6)
             .fill(0)
             .map((_, i) => (
               <div
                 key={i}
-                className="h-16 animate-pulse rounded-xl bg-white/[0.03]"
+                className="h-12 animate-pulse rounded-xl bg-white/3"
                 style={{ animationDelay: `${i * 0.07}s` }}
               />
             ))}
@@ -401,7 +292,7 @@ export default function Tasks() {
   }
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-[#071828]">
+    <div className="flex h-full flex-col overflow-hidden bg-[#071828]">
       {/* Grid bg */}
       <div
         className="pointer-events-none fixed inset-0"
@@ -411,15 +302,13 @@ export default function Tasks() {
         }}
       />
 
-      {/* ── Header ────────────────────────────────────────────────── */}
-      <div className="relative z-10 border-b border-white/5 bg-[#071828]/90 px-6 py-4 backdrop-blur-sm">
+      {/* ── Header ── */}
+      <div className="relative z-10 shrink-0 border-b border-white/5 bg-[#071828]/90 px-6 py-4 backdrop-blur-sm">
         <div className="flex items-center justify-between gap-4">
           <div>
             <h1 className="text-lg font-bold text-white">Vazifalar</h1>
             <p className="text-xs text-gray-600">{stats.all} ta vazifa</p>
           </div>
-
-          {/* Search — ism yoki tavsif bo'yicha */}
           <div className="flex max-w-sm flex-1 items-center gap-2 rounded-xl border border-white/5 bg-white/3 px-3 py-2">
             <Search size={14} className="shrink-0 text-gray-600" />
             <input
@@ -433,7 +322,7 @@ export default function Tasks() {
         </div>
 
         {/* Tabs + Filters */}
-        <div className="mt-3 flex flex-wrap items-center gap-1">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           {[
             { key: "all", label: "Barchasi", count: stats.all, alert: false },
             {
@@ -460,11 +349,7 @@ export default function Tasks() {
             >
               {tab.label}
               <span
-                className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                  tab.alert
-                    ? "bg-red-500/20 text-red-400"
-                    : "bg-white/5 text-gray-600"
-                }`}
+                className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${tab.alert ? "bg-red-500/20 text-red-400" : "bg-white/5 text-gray-600"}`}
               >
                 {tab.count}
               </span>
@@ -473,6 +358,7 @@ export default function Tasks() {
 
           <div className="mx-1 h-4 w-px bg-white/5" />
 
+          {/* Status select */}
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
@@ -485,12 +371,49 @@ export default function Tasks() {
               </option>
             ))}
           </select>
+
+          {/* Date range */}
+          <div className="flex items-center gap-2 rounded-lg border border-white/5 bg-white/3 px-3 py-1.5">
+            <Filter size={12} className="text-gray-600" />
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="bg-transparent text-xs text-gray-400 [color-scheme:dark] outline-none"
+            />
+            <span className="text-gray-600">—</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="bg-transparent text-xs text-gray-400 [color-scheme:dark] outline-none"
+            />
+          </div>
+
+          {hasFilters && (
+            <button
+              onClick={() => {
+                setFilterStatus("all");
+                setDateFrom("");
+                setDateTo("");
+                setSearch("");
+                setActiveTab("all");
+              }}
+              className="text-xs text-gray-600 transition-colors hover:text-red-400"
+            >
+              Tozalash ✕
+            </button>
+          )}
+
+          <span className="ml-auto text-xs text-gray-600">
+            {filtered.length} ta natija
+          </span>
         </div>
       </div>
 
-      {/* ── Task list ──────────────────────────────────────────────── */}
-      <div className="scrollbar-hide relative flex-1 overflow-y-auto px-6 py-4">
-        {active.length === 0 && done.length === 0 && (
+      {/* ── Table ── */}
+      <div className="relative z-10 flex-1 overflow-auto px-6 py-4">
+        {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
             <CheckCircle2 size={40} className="text-gray-700" />
             <p className="text-sm font-medium text-gray-500">
@@ -500,49 +423,220 @@ export default function Tasks() {
               Filter o'zgartiring yoki yangi vazifa qo'shing
             </p>
           </div>
-        )}
+        ) : (
+          <table className="w-full min-w-[860px] border-collapse">
+            <thead>
+              <tr className="border-b border-white/5">
+                {[
+                  { key: "status", label: "Holat" },
+                  { key: "lead", label: "Mijoz" },
+                  { key: "description", label: "Vazifa" },
+                  { key: "taskDate", label: "Sana" },
+                  { key: "assignedUser", label: "Mas'ul" },
+                  { key: "remaining", label: "Qoldi" },
+                ].map((col) => (
+                  <th
+                    key={col.key}
+                    onClick={() => handleSort(col.key)}
+                    className="cursor-pointer px-4 py-3 text-left text-[11px] font-medium tracking-wider text-gray-600 uppercase transition-colors select-none hover:text-gray-300"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      {col.label}
+                      <SortIcon field={col.key} sortBy={sortBy} dir={sortDir} />
+                    </div>
+                  </th>
+                ))}
+                <th className="w-8 px-4 py-3" />
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((task, i) => {
+                const isDone = task.status === "FINISHED";
+                const overdue = isOverdue(task.taskDate, task.status);
+                const type = TYPES[task.type] || TYPES.task;
+                const statusInfo =
+                  API_STATUSES[task.status] || API_STATUSES.PENDING;
+                const lead = task.leads;
+                const leadName = lead
+                  ? `${lead.firstName || ""} ${lead.lastName || ""}`.trim()
+                  : null;
+                const leadPhone = lead?.phone;
+                const leadSource = lead?.leadSource;
+                const leadStatus = lead?.status;
+                const assignedUser = lead?.assignedUser || task.assignedUser;
+                const remaining =
+                  task.taskRemainingDays ?? lead?.taskRemainingDays;
 
-        {active.length > 0 && (
-          <div className="mb-6">
-            <p className="mb-3 text-xs font-semibold tracking-wider text-gray-600 uppercase">
-              Bajarilishi kerak — {active.length}
-            </p>
-            <div className="flex flex-col gap-2">
-              {active.map((t, i) => (
-                <TaskRow
-                  key={t.id}
-                  task={t}
-                  onToggle={handleToggle}
-                  onDelete={handleDelete}
-                  style={{ animation: `taskIn .3s ease ${i * 0.04}s both` }}
-                />
-              ))}
-            </div>
-          </div>
-        )}
+                return (
+                  <tr
+                    key={task.id}
+                    className={`group border-b border-white/[0.03] transition-colors hover:bg-white/[0.02] ${isDone ? "opacity-50" : ""}`}
+                    style={{ animation: `taskIn .25s ease ${i * 0.03}s both` }}
+                  >
+                    {/* Holat */}
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleToggle(task)}
+                          className="shrink-0 transition-transform hover:scale-110"
+                        >
+                          {isDone ? (
+                            <CheckCircle2
+                              size={16}
+                              className="text-green-500"
+                            />
+                          ) : (
+                            <Circle
+                              size={16}
+                              className="text-gray-600 hover:text-blue-400"
+                            />
+                          )}
+                        </button>
+                        <span
+                          className="rounded-md px-2 py-0.5 text-[10px] font-semibold"
+                          style={{
+                            color: statusInfo.color,
+                            background: `${statusInfo.color}18`,
+                          }}
+                        >
+                          {statusInfo.label}
+                        </span>
+                      </div>
+                    </td>
 
-        {done.length > 0 && (
-          <div>
-            <p className="mb-3 text-xs font-semibold tracking-wider text-gray-700 uppercase">
-              Bajarildi — {done.length}
-            </p>
-            <div className="flex flex-col gap-2">
-              {done.map((t, i) => (
-                <TaskRow
-                  key={t.id}
-                  task={t}
-                  onToggle={handleToggle}
-                  onDelete={handleDelete}
-                  style={{ animation: `taskIn .3s ease ${i * 0.04}s both` }}
-                />
-              ))}
-            </div>
-          </div>
+                    {/* Mijoz */}
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col gap-0.5">
+                        {leadName ? (
+                          <>
+                            <div className="flex items-center gap-1.5">
+                              <Avatar name={leadName} size={5} />
+                              <Link
+                                to={`/leadDetails?leadId=${lead?.id}`}
+                                className={`text-sm font-medium transition-colors hover:underline ${isDone ? "text-gray-500 line-through" : "text-white"}`}
+                              >
+                                {leadName}
+                              </Link>
+                              {leadStatus && (
+                                <span
+                                  className="rounded px-1.5 py-px text-[9px] font-semibold"
+                                  style={{
+                                    color: leadStatus.color || "#94a3b8",
+                                    background: `${leadStatus.color || "#94a3b8"}20`,
+                                  }}
+                                >
+                                  {leadStatus.name}
+                                </span>
+                              )}
+                            </div>
+                            {leadPhone && (
+                              <a
+                                href={`tel:${leadPhone}`}
+                                className="flex items-center gap-1 text-[10px] text-gray-600 transition-colors hover:text-blue-400"
+                              >
+                                <Phone size={9} />
+                                {formatPhone(leadPhone)}
+                              </a>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-xs text-gray-600">—</span>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* Vazifa */}
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="h-2 w-2 shrink-0 rounded-full"
+                          style={{
+                            background: type.color,
+                            boxShadow: `0 0 5px ${type.color}`,
+                          }}
+                        />
+                        <span
+                          className={`text-sm ${isDone ? "text-gray-500 line-through" : "text-gray-200"}`}
+                        >
+                          {task.description}
+                        </span>
+                      </div>
+                      {leadSource && (
+                        <div className="mt-1 flex items-center gap-1">
+                          <SourceIcon source={leadSource} />
+                          <span className="text-[10px] text-gray-600">
+                            {leadSource.name}
+                          </span>
+                        </div>
+                      )}
+                    </td>
+
+                    {/* Sana */}
+                    <td className="px-4 py-3">
+                      <div
+                        className={`flex items-center gap-1.5 text-xs ${overdue ? "text-red-400" : "text-gray-500"}`}
+                      >
+                        {overdue && <AlertCircle size={10} />}
+                        <Calendar size={10} />
+                        {formatDate(task.taskDate)}
+                      </div>
+                    </td>
+
+                    {/* Mas'ul */}
+                    <td className="px-4 py-3">
+                      {assignedUser?.fullName ? (
+                        <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-500/20 text-[9px] font-bold text-blue-400">
+                            {assignedUser.fullName[0]}
+                          </div>
+                          {assignedUser.fullName}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-700">—</span>
+                      )}
+                    </td>
+
+                    {/* Qoldi */}
+                    <td className="px-4 py-3">
+                      {isDone ? (
+                        <span className="text-[10px] text-green-500">
+                          ✓ Tugadi
+                        </span>
+                      ) : overdue ? (
+                        <span className="text-[10px] text-red-400">
+                          Kechikdi
+                        </span>
+                      ) : remaining != null && remaining > 0 ? (
+                        <div
+                          className={`flex items-center gap-1 text-xs ${remaining <= 1 ? "text-red-400" : "text-gray-500"}`}
+                        >
+                          <Clock size={10} />
+                          {remaining} kun
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-700">—</span>
+                      )}
+                    </td>
+
+                    {/* Delete */}
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => handleDelete(task.id)}
+                        className="text-gray-700 opacity-0 transition-all group-hover:opacity-100 hover:text-red-400"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         )}
       </div>
 
       <style>{`
-        @keyframes taskIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes taskIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
       `}</style>
     </div>
   );

@@ -6,6 +6,7 @@ import Status from "./pages/status";
 import AddStatus from "./pages/addStatus";
 import Profile from "./pages/profile";
 import Projects from "./pages/project";
+import Kanban from "./pages/kanban";
 import Setting from "./pages/settings";
 import Tasks from "./pages/task";
 import LeadSource from "./pages/leadSource";
@@ -43,14 +44,21 @@ function Forbidden() {
 export function ProtectedLayout() {
   return (
     <SidebarProvider defaultOpen={true}>
-      <div className="flex w-full bg-gray-700">
+      <div className="flex w-full overflow-hidden bg-gray-700">
         <AppSidebar />
-        <SidebarInset className="flex flex-col bg-[#153043]">
-          <header className="sticky top-0 z-20 flex h-16 w-full shrink-0 items-center gap-2 bg-[#153043] px-4 backdrop-blur-sm">
-            <SidebarTrigger className="-ml-1 p-1 text-2xl text-white" />
+        <SidebarInset className="flex flex-col overflow-hidden bg-[#153043]">
+          {/* <header className="sticky top-0 z-20 flex h-16 w-full shrink-0 items-center gap-2 bg-[#153043] px-4 backdrop-blur-sm">
+            <SidebarTrigger className="p-1 text-2xl text-white" />
             <Header />
-          </header>
-          <main className="flex-1 overflow-auto bg-[#0f2231]">
+          </header> */}
+          <main
+            className="flex-1 overflow-hidden bg-[#0f2231]"
+            style={{
+              backgroundImage: `linear-gradient(rgba(255,255,255,0.012) 1px,transparent 1px),
+                      linear-gradient(90deg,rgba(255,255,255,0.012) 1px,transparent 1px)`,
+              backgroundSize: "40px 40px",
+            }}
+          >
             <Outlet />
           </main>
         </SidebarInset>
@@ -83,6 +91,10 @@ const router = createBrowserRouter([
       {
         path: "profile",
         element: <Profile />,
+      },
+      {
+        path: "kanban",
+        element: <Kanban />,
       },
       {
         path: "tasks",

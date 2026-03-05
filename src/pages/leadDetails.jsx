@@ -36,7 +36,6 @@ import { toast } from "sonner";
 
 const API = import.meta.env.VITE_VITE_API_KEY_PROHOME;
 
-// ─── HELPERS ─────────────────────────────────────────────────────────────────
 const formatCurrency = (amount) =>
   new Intl.NumberFormat("uz-UZ").format(amount) + " so'm";
 
@@ -68,24 +67,12 @@ const formatMonthYear = (dateString) => {
   });
 };
 
-const getTaskStatus = (taskDate) => {
-  if (!taskDate) return null;
-  const now = new Date();
-  const due = new Date(taskDate);
-  const diffMs = due - now;
-  const diffH = diffMs / (1000 * 60 * 60);
-  if (diffMs < 0) return "overdue";
-  if (diffH < 24) return "soon";
-  return "ok";
-};
-
 const maxBirthDate = (() => {
   const d = new Date();
   d.setFullYear(d.getFullYear() - 18);
   return d.toISOString().slice(0, 10);
 })();
 
-// ─── EVENT CONFIG ─────────────────────────────────────────────────────────────
 const EVENT_CFG = {
   Description: { icon: MessageCircle, color: "#3b82f6", label: "Izoh" },
   tasks: { icon: CheckSquare, color: "#10b981", label: "Task" },
@@ -127,9 +114,7 @@ function EventCard({ event, headers, onRefresh }) {
   const cfg = getCfg(event.type);
   const Icon = cfg.icon;
   const isTask = event.type === "tasks";
-  const isDesc = event.type === "Description";
 
-  // ── edit state ──
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(
     event.text || event.description || "",
@@ -164,7 +149,6 @@ function EventCard({ event, headers, onRefresh }) {
   };
   const tsCfg = isTask ? STATUS_MAP[event.status] || STATUS_MAP.CANCELED : null;
 
-  // ── PATCH task ──
   const handleSaveTask = async () => {
     if (!editText.trim()) return;
     setSaving(true);
@@ -187,7 +171,6 @@ function EventCard({ event, headers, onRefresh }) {
     }
   };
 
-  // ── PATCH description ──
   const handleSaveDesc = async () => {
     if (!editText.trim()) return;
     setSaving(true);
@@ -208,7 +191,6 @@ function EventCard({ event, headers, onRefresh }) {
     }
   };
 
-  // ── DELETE ──
   const handleDelete = async () => {
     if (!window.confirm("O'chirilsinmi?")) return;
     setDeleting(true);
@@ -231,7 +213,6 @@ function EventCard({ event, headers, onRefresh }) {
 
   return (
     <div className="group flex gap-3">
-      {/* Timeline dot */}
       <div className="flex flex-col items-center">
         <div
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl"
@@ -248,7 +229,6 @@ function EventCard({ event, headers, onRefresh }) {
         />
       </div>
 
-      {/* Card */}
       <div
         className="mb-3 flex-1 overflow-hidden rounded-xl border border-white/[0.05] p-4 transition-colors group-hover:bg-white/[0.02]"
         style={{
@@ -258,7 +238,6 @@ function EventCard({ event, headers, onRefresh }) {
           borderLeft: `2px solid ${cfg.color}35`,
         }}
       >
-        {/* Header */}
         <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <span
@@ -281,14 +260,11 @@ function EventCard({ event, headers, onRefresh }) {
               </span>
             )}
           </div>
-
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1 text-[11px] text-gray-600">
               <Clock size={10} />
               {formatDateTime(event.createdAt)}
             </div>
-
-            {/* Action buttons — hover da ko'rinadi */}
             {!editing && (
               <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                 <button
@@ -297,7 +273,6 @@ function EventCard({ event, headers, onRefresh }) {
                     setEditText(event.text || event.description || "");
                   }}
                   className="flex h-6 w-6 items-center justify-center rounded-lg text-gray-600 transition-colors hover:bg-white/10 hover:text-blue-400"
-                  title="Tahrirlash"
                 >
                   <Pencil size={11} />
                 </button>
@@ -305,7 +280,6 @@ function EventCard({ event, headers, onRefresh }) {
                   onClick={handleDelete}
                   disabled={deleting}
                   className="flex h-6 w-6 items-center justify-center rounded-lg text-gray-600 transition-colors hover:bg-white/10 hover:text-red-400 disabled:opacity-40"
-                  title="O'chirish"
                 >
                   <Trash2 size={11} />
                 </button>
@@ -314,13 +288,11 @@ function EventCard({ event, headers, onRefresh }) {
           </div>
         </div>
 
-        {/* ── View mode ── */}
         {!editing && (
           <>
             <p className="text-sm leading-relaxed text-gray-300">
               {event.text || event.description}
             </p>
-
             {isTask && (
               <div
                 className="mt-3 flex items-center justify-between gap-3 rounded-lg px-3 py-2.5"
@@ -357,7 +329,6 @@ function EventCard({ event, headers, onRefresh }) {
           </>
         )}
 
-        {/* ── Edit mode ── */}
         {editing && (
           <div className="space-y-2.5">
             <textarea
@@ -368,10 +339,8 @@ function EventCard({ event, headers, onRefresh }) {
               placeholder={isTask ? "Vazifa matni..." : "Izoh matni..."}
               autoFocus
             />
-
             {isTask && (
               <div className="flex flex-wrap gap-2">
-                {/* Status select */}
                 <div className="flex items-center gap-1.5">
                   {TASK_STATUS_OPTIONS.map((s) => (
                     <button
@@ -391,8 +360,6 @@ function EventCard({ event, headers, onRefresh }) {
                     </button>
                   ))}
                 </div>
-
-                {/* Date input */}
                 <input
                   type="datetime-local"
                   value={editDate ? editDate.slice(0, 16) : ""}
@@ -402,7 +369,6 @@ function EventCard({ event, headers, onRefresh }) {
                 />
               </div>
             )}
-
             <div className="flex items-center gap-2">
               <button
                 onClick={handleSave}
@@ -493,8 +459,9 @@ function TaskDatePicker({ value, onChange }) {
 
   const confirm = () => {
     if (!selDay) return;
-    const iso = `${viewYear}-${pad(viewMonth + 1)}-${pad(selDay)}T${pad(hour)}:${pad(minute)}:00`;
-    onChange(iso);
+    onChange(
+      `${viewYear}-${pad(viewMonth + 1)}-${pad(selDay)}T${pad(hour)}:${pad(minute)}:00`,
+    );
     setOpen(false);
   };
 
@@ -840,7 +807,7 @@ const LeadDetails = () => {
   const leadId = searchParams.get("leadId");
   const token = localStorage.getItem("user");
   const projectId = localStorage.getItem("projectId");
-  const userId = localStorage.getItem("projectId");
+  // FIX 1: userId = projectId bug tuzatildi — tasks lead ichidan keladi, alohida fetch yo'q
 
   const [dealData, setDealData] = useState(null);
   const [events, setEvents] = useState([]);
@@ -849,15 +816,19 @@ const LeadDetails = () => {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
 
+  // FIX 2: tag editing — array state
+  const [editTags, setEditTags] = useState([""]);
+
   const headers = {
     "Content-Type": "application/json",
     Authorization: `Bearer ${token}`,
   };
 
+  // FIX 3: mergeEvents — description array "type" fieldsiz kelishi mumkin
   const mergeEvents = (descs, tasks) => {
     const descList = (Array.isArray(descs) ? descs : []).map((d) => ({
       ...d,
-      type: d.type || "Description",
+      type: "Description", // har doim majburiy
     }));
     const taskList = (Array.isArray(tasks) ? tasks : []).map((t) => ({
       ...t,
@@ -873,16 +844,14 @@ const LeadDetails = () => {
     if (!token || !leadId) return;
     (async () => {
       try {
-        const requests = [
+        // FIX 3: tasks alohida fetch yo'q — lead ichidagi tasks ishlatiladi
+        const [leadRes, descRes, sourceRes] = await Promise.all([
           fetch(`${API}/leeds/${leadId}`, { headers }),
           fetch(`${API}/Description/lead/${leadId}?projectId=${projectId}`, {
             headers,
           }),
           fetch(`${API}/lead-source/${projectId}`, { headers }),
-          ...(userId ? [fetch(`${API}/tasks/${userId}`, { headers })] : []),
-        ];
-        const [leadRes, descRes, sourceRes, taskRes] =
-          await Promise.all(requests);
+        ]);
 
         if (leadRes.status === 401) {
           localStorage.clear();
@@ -890,19 +859,20 @@ const LeadDetails = () => {
           return;
         }
 
-        const [lead, descs, sources, tasks] = await Promise.all([
+        const [lead, descs, sources] = await Promise.all([
           leadRes.json(),
           descRes.ok ? descRes.json() : [],
           sourceRes.ok ? sourceRes.json() : [],
-          taskRes?.ok ? taskRes.json() : [],
         ]);
 
         setDealData(lead);
         setLeadSource(Array.isArray(sources) ? sources : []);
-        const leadTasks = (Array.isArray(tasks) ? tasks : []).filter(
-          (t) => String(t.leadsId) === String(leadId),
-        );
-        setEvents(mergeEvents(descs, leadTasks));
+        // FIX 3: lead.tasks ichidan olamiz
+        setEvents(mergeEvents(descs, lead.tasks || []));
+        // FIX 2: tag array bilan editTags ni to'ldirish
+        const tagArr =
+          Array.isArray(lead.tag) && lead.tag.length ? lead.tag : [""];
+        setEditTags(tagArr);
       } catch (err) {
         console.error(err);
         toast.error("Ma'lumotlar yuklanmadi");
@@ -914,37 +884,38 @@ const LeadDetails = () => {
 
   const refreshEvents = async () => {
     try {
-      const requests = [
+      const [descRes, leadRes] = await Promise.all([
         fetch(`${API}/Description/lead/${leadId}?projectId=${projectId}`, {
           headers,
         }),
-        ...(userId ? [fetch(`${API}/tasks/${userId}`, { headers })] : []),
-      ];
-      const [descRes, taskRes] = await Promise.all(requests);
+        fetch(`${API}/leeds/${leadId}`, { headers }),
+      ]);
       const descs = descRes?.ok ? await descRes.json() : [];
-      const tasks = taskRes?.ok ? await taskRes.json() : [];
-      const leadTasks = (Array.isArray(tasks) ? tasks : []).filter(
-        (t) => String(t.leadsId) === String(leadId),
-      );
-      setEvents(mergeEvents(descs, leadTasks));
+      const lead = leadRes?.ok ? await leadRes.json() : null;
+      if (lead) {
+        setDealData(lead);
+        setEvents(mergeEvents(descs, lead.tasks || []));
+      }
     } catch (err) {
       console.error(err);
     }
   };
 
+  // FIX 4: tasks POST — "date" -> "taskDate"
   const handlePostDesc = async (text, type, date) => {
     setSending(true);
     try {
       if (type === "tasks") {
+        const body = {
+          projectId: Number(projectId),
+          leadsId: Number(leadId),
+          description: text,
+          ...(date && { taskDate: date }), // FIX: date -> taskDate
+        };
         const res = await fetch(`${API}/tasks`, {
           method: "POST",
           headers,
-          body: JSON.stringify({
-            projectId: Number(projectId),
-            leadsId: Number(leadId),
-            description: text,
-            ...(date && { date }),
-          }),
+          body: JSON.stringify(body),
         });
         if (!res.ok) throw new Error();
       } else {
@@ -975,18 +946,19 @@ const LeadDetails = () => {
     setDealData((prev) => ({ ...prev, [name]: value }));
   };
 
+  // FIX 2: handleSubmit — tag array yuborish
   const handleSubmit = async (e) => {
     e.preventDefault();
     const body = {
       firstName: dealData.firstName,
       lastName: dealData.lastName,
       phone: dealData.phone,
-      extraPhone: dealData.extraPhone,
-      adress: dealData.adress,
-      budjet: Number(dealData.budjet),
-      leadSourceId: Number(dealData.leadSourceId),
+      extraPhone: dealData.extraPhone || undefined,
+      adress: dealData.adress || undefined,
+      budjet: Number(dealData.budjet) || undefined,
+      leadSourceId: Number(dealData.leadSourceId) || undefined,
       projectId: Number(projectId),
-      tag: dealData.tag,
+      tag: editTags.map((t) => t.trim()).filter(Boolean), // FIX: array
       birthDate: dealData.birthDate
         ? new Date(dealData.birthDate).toISOString().split("T")[0]
         : undefined,
@@ -1053,6 +1025,7 @@ const LeadDetails = () => {
         className="flex w-96 shrink-0 flex-col overflow-hidden border-r"
         style={{ borderColor: "rgba(255,255,255,0.05)", background: "#0a1929" }}
       >
+        {/* Header */}
         <div
           className="shrink-0 border-b px-5 py-4"
           style={{ borderColor: "rgba(255,255,255,0.05)" }}
@@ -1073,20 +1046,28 @@ const LeadDetails = () => {
               <MoreVertical size={15} />
             </button>
           </div>
-          {dealData.tag && (
-            <span
-              className="inline-block rounded-lg px-3 py-1 text-xs font-medium"
-              style={{
-                background: "rgba(59,130,246,0.12)",
-                color: "#60a5fa",
-                border: "1px solid rgba(59,130,246,0.2)",
-              }}
-            >
-              #{dealData.tag}
-            </span>
+
+          {/* FIX 2: tag — array ko'rsatish */}
+          {Array.isArray(dealData.tag) && dealData.tag.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {dealData.tag.map((t, i) => (
+                <span
+                  key={i}
+                  className="inline-block rounded-lg px-3 py-1 text-xs font-medium"
+                  style={{
+                    background: "rgba(59,130,246,0.12)",
+                    color: "#60a5fa",
+                    border: "1px solid rgba(59,130,246,0.2)",
+                  }}
+                >
+                  #{t}
+                </span>
+              ))}
+            </div>
           )}
         </div>
 
+        {/* Avatar */}
         <div
           className="shrink-0 border-b px-5 py-4"
           style={{ borderColor: "rgba(255,255,255,0.05)" }}
@@ -1107,6 +1088,7 @@ const LeadDetails = () => {
           </div>
         </div>
 
+        {/* Tabs */}
         <div
           className="flex shrink-0 border-b"
           style={{ borderColor: "rgba(255,255,255,0.05)" }}
@@ -1128,6 +1110,7 @@ const LeadDetails = () => {
         </div>
 
         <div className="scrollbar-hide flex-1 overflow-y-auto">
+          {/* ── ASOSIY TAB ── */}
           {activeTab === "asosiy" && (
             <div className="space-y-4 p-5">
               <InfoRow label="Loyiha" value={dealData?.project?.name} />
@@ -1143,7 +1126,7 @@ const LeadDetails = () => {
                 <div className="flex items-center gap-2">
                   <HandCoins size={14} className="text-yellow-400" />
                   <p className="text-sm font-medium text-white">
-                    {formatCurrency(dealData.budjet)}
+                    {formatCurrency(dealData.budjet || 0)}
                   </p>
                 </div>
               </div>
@@ -1178,11 +1161,33 @@ const LeadDetails = () => {
                       </p>
                     </div>
                   </div>
+                  {/* FIX 2: tag array ko'rsatish */}
+                  {Array.isArray(dealData.tag) && dealData.tag.length > 0 && (
+                    <div>
+                      <p className="mb-1 text-[11px] text-gray-600">Teglar</p>
+                      <div className="flex flex-wrap gap-1">
+                        {dealData.tag.map((t, i) => (
+                          <span
+                            key={i}
+                            className="rounded px-2 py-0.5 text-xs"
+                            style={{
+                              background: "rgba(59,130,246,0.1)",
+                              color: "#60a5fa",
+                              border: "1px solid rgba(59,130,246,0.2)",
+                            }}
+                          >
+                            {t}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
           )}
 
+          {/* ── TAHRIRLASH TAB ── */}
           {activeTab === "tahrirlash" && (
             <form className="p-5 text-white" onSubmit={handleSubmit}>
               <FieldGroup>
@@ -1209,10 +1214,17 @@ const LeadDetails = () => {
                 </div>
                 <Field>
                   <FieldLabel>Tug'ilgan sana</FieldLabel>
+                  {/* FIX: birthDate ISO string -> slice(0,10) */}
                   <Input
                     type="date"
                     name="birthDate"
-                    value={dealData.birthDate?.slice(0, 10) ?? ""}
+                    value={
+                      dealData.birthDate
+                        ? new Date(dealData.birthDate)
+                            .toISOString()
+                            .slice(0, 10)
+                        : ""
+                    }
                     onChange={handleChange}
                     max={maxBirthDate}
                   />
@@ -1290,15 +1302,46 @@ const LeadDetails = () => {
                     </Select>
                   </Field>
                 </div>
+
+                {/* FIX 2: tag — dynamic array inputs */}
                 <Field>
-                  <FieldLabel>Teg</FieldLabel>
-                  <Input
-                    name="tag"
-                    value={dealData.tag || ""}
-                    onChange={handleChange}
-                    placeholder="Teg..."
-                  />
+                  <FieldLabel>Teglar</FieldLabel>
+                  <div className="flex flex-col gap-1.5">
+                    {editTags.map((tag, idx) => (
+                      <div key={idx} className="flex items-center gap-1.5">
+                        <Input
+                          value={tag}
+                          onChange={(e) => {
+                            const next = [...editTags];
+                            next[idx] = e.target.value;
+                            setEditTags(next);
+                          }}
+                          placeholder="VIP, comfort..."
+                          className="flex-1"
+                        />
+                        {editTags.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditTags((p) => p.filter((_, i) => i !== idx))
+                            }
+                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-red-800/40 text-red-400 hover:bg-red-900/20"
+                          >
+                            <X size={13} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setEditTags((p) => [...p, ""])}
+                      className="flex items-center gap-1 self-start rounded-md border border-dashed border-[#2a4868] px-2.5 py-1 text-xs text-gray-400 hover:border-blue-500/50 hover:text-white"
+                    >
+                      + Teg qo'shish
+                    </button>
+                  </div>
                 </Field>
+
                 <div className="flex gap-2 pt-1">
                   <Button
                     type="button"
@@ -1384,10 +1427,6 @@ const LeadDetails = () => {
 
         <InputBar onSubmit={handlePostDesc} sending={sending} />
       </div>
-
-      <style>{`
-        @keyframes fadeUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
-      `}</style>
     </div>
   );
 };
